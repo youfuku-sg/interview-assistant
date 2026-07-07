@@ -2,6 +2,12 @@
 
 このファイルは [Keep a Changelog](https://keepachangelog.com/) 形式に準ずる。過去のリリース（v0.1.10 より前）は遡って記載しない。形式・運用方針は `docs/仕様/ブランチ・リリース戦略.md` 4.3節を参照。
 
+## [0.5.5] - 2026-07-07
+
+### Fixed
+
+- **hotfix**: [0.5.4](#054---2026-07-07)で `tauriFetch` に切り替えた後も、ポート番号付きのURL(例: `http://192.168.4.30:20128/...`)を指すカスタムSTT/AIプロバイダーが `url not allowed on the configured scope` で拒否されていた。`src-tauri/capabilities/` の `http:default` 許可設定が `http://**` / `https://**` のみで、`tauri-plugin-http` のスコープマッチャーが `**` を `:<port>` 部分をまたいで解釈しない既知の制限([tauri-apps/plugins-workspace#2131](https://github.com/tauri-apps/plugins-workspace/issues/2131))に引っかかっていた。`http://*:*/**` / `https://*:*/**` パターンを追加し、ポート付きURLも許可されるようにした
+
 ## [0.5.4] - 2026-07-07
 
 ### Fixed
