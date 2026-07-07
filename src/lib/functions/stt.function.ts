@@ -118,6 +118,9 @@ export async function fetchSTT(params: STTParams): Promise<string> {
     if (queryString) {
       url += (url.includes("?") ? "&" : "?") + queryString;
     }
+    if (!url) {
+      throw new Error("STTリクエストURLが空です。curlコマンドを確認してください。");
+    }
 
     let finalHeaders = { ...headers };
     let body: FormData | string | Blob;
@@ -171,7 +174,11 @@ export async function fetchSTT(params: STTParams): Promise<string> {
           form.append(key.toLowerCase(), val as string | Blob);
         }
       }
-      delete finalHeaders["Content-Type"];
+      for (const key of Object.keys(finalHeaders)) {
+        if (key.toLowerCase() === "content-type") {
+          delete finalHeaders[key];
+        }
+      }
       body = form;
     } else if (isBinaryUpload) {
       // Deepgram-style: raw binary body
@@ -185,18 +192,21 @@ export async function fetchSTT(params: STTParams): Promise<string> {
       body = JSON.stringify(deepVariableReplacer(dataObj, allVariables));
     }
 
-    const fetchFunction = url?.includes("http") ? fetch : tauriFetch;
-
     // Send request
     let response: Response;
+    const requestMethod = curlJson.method || "POST";
     try {
-      response = await fetchFunction(url, {
-        method: curlJson.method || "POST",
+      response = await tauriFetch(url, {
+        method: requestMethod,
         headers: finalHeaders,
-        body: curlJson.method === "GET" ? undefined : body,
+        body: requestMethod === "GET" ? undefined : body,
       });
     } catch (e) {
-      throw new Error(`Network error: ${e instanceof Error ? e.message : e}`);
+      throw new Error(
+        `STT network error via Tauri HTTP (${requestMethod} ${url}): ${
+          e instanceof Error ? e.message : e
+        }`
+      );
     }
 
     if (!response.ok) {
