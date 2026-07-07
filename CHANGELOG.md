@@ -2,6 +2,19 @@
 
 このファイルは [Keep a Changelog](https://keepachangelog.com/) 形式に準ずる。過去のリリース（v0.1.10 より前）は遡って記載しない。形式・運用方針は `docs/仕様/ブランチ・リリース戦略.md` 4.3節を参照。
 
+## [0.5.4] - 2026-07-07
+
+### Fixed
+
+- **hotfix**: カスタムSTTプロバイダーでローカルサーバー(例: `127.0.0.1`上のspeaches/faster-whisperコンテナ)を指定すると、コンテナ自体は正常に稼働・応答しているにもかかわらず `Network error: Failed to fetch` で失敗し、リクエストがコンテナに一切届いていなかった。原因は `fetchSTT()` がURLに`http`を含む場合にTauriの`tauriFetch`ではなくブラウザの`fetch()`を使っていたことで、`tauri.localhost`というwebview originからループバック/プライベートアドレスへのリクエストがChromiumのPrivate Network Accessポリシーによりネットワークに出る前にブロックされていた。常に`@tauri-apps/plugin-http`の`tauriFetch`(Rust側から直接送信されCORS/PNAの制約を受けない)を使うように変更した
+- カスタムSTTプロバイダーを保存・編集した直後にそのプロバイダーを自動選択するようにした。従来は保存しただけでは有効化されず、明示的に選択し直さない限り既存の選択(組み込みのOpenAI Whisperなど)のままになっていた
+- curlのURLが空文字列になった場合(例: `--location`使用時の`curl-to-json`誤パース)に、無言でリクエストを送るのではなく明示的なエラーを出すようにした
+- マルチパートフォーム送信時の`Content-Type`ヘッダー除去を大文字小文字を区別せず行うようにした
+
+### Notes
+
+- OpenSpec変更 `add-auto-update`(アプリ起動時の自動更新チェック・確認・インストールの提案)をこのリリースに合わせて追加した。実装はまだ未着手
+
 ## [0.5.3] - 2026-07-07
 
 ### Notes

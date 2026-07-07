@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { TYPE_PROVIDER } from "@/types";
-import { SPEECH_TO_TEXT_PROVIDERS } from "@/config";
+import { SPEECH_TO_TEXT_PROVIDERS, STORAGE_KEYS } from "@/config";
 import { useApp } from "@/contexts";
 import {
   addCustomSttProvider,
   getCustomSttProviders,
   removeCustomSttProvider,
+  safeLocalStorage,
   updateCustomSttProvider,
   validateCurl,
 } from "@/lib";
@@ -24,6 +25,16 @@ export function useCustomSttProviders() {
 
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+
+  const selectSttProvider = (providerId: string) => {
+    safeLocalStorage.setItem(
+      STORAGE_KEYS.SELECTED_STT_PROVIDER,
+      JSON.stringify({
+        provider: providerId,
+        variables: {},
+      })
+    );
+  };
 
   const handleEdit = (providerId: string) => {
     const customProviders = getCustomSttProviders();
@@ -111,6 +122,7 @@ export function useCustomSttProviders() {
         });
 
         if (success) {
+          selectSttProvider(editingProvider);
           setEditingProvider(null);
           setShowForm(false);
           setFormData({
@@ -131,7 +143,8 @@ export function useCustomSttProviders() {
         };
 
         const saved = addCustomSttProvider(newProvider);
-        if (saved) {
+        if (saved?.id) {
+          selectSttProvider(saved.id);
           setShowForm(false);
           setFormData({
             id: "",
