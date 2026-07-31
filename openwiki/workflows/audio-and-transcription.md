@@ -1,46 +1,46 @@
 ---
-type: Workflow
-title: Audio Capture and Transcription Workflow
-description: Documents microphone and system-audio capture, VAD and continuous mode, STT and optional AI processing, session transcript state, and debounced conversation saving.
+type: ワークフロー
+title: オーディオキャプチャと文字起こしのワークフロー
+description: マイクとシステムオーディオのキャプチャ、VAD と連続モード、STT とオプションの AI 処理、セッションの文字起こし状態、デバウンスされた会話の保存について説明します。
 tags: [workflow, audio, transcription, stt, vad]
 ---
 
-# Audio Capture and Transcription Workflow
+# オーディオキャプチャと文字起こしのワークフロー
 
-`useSystemAudio.ts` coordinates the user-facing system-audio path. It requests access where needed, selects an output device, passes VAD configuration to Rust, aborts in-flight work on stop, and keeps the accumulated session transcript and summary visible after capture ends.
+`useSystemAudio.ts` は、ユーザー向けのシステムオーディオ経路を調整します。必要に応じてアクセスを要求し、出力デバイスを選択し、VAD 設定を Rust に渡し、停止時には実行中の処理を中断し、キャプチャ終了後も蓄積されたセッションの文字起こしと要約を表示し続けます。
 
 ```mermaid
 flowchart TD
-    Start[User starts system audio] --> Access{Access available}
-    Access -- no --> Request[Request permission and check again]
+    Start[ユーザーがシステムオーディオを開始] --> Access{アクセス可能}
+    Access -- いいえ --> Request[権限を要求して再確認]
     Request --> Access
-    Access -- yes --> Capture[Start capture with VAD and device]
-    Capture --> Segment[Receive audio segment]
-    Segment --> STT[Transcribe through Tauri API]
-    STT --> Session[Update session transcript and response state]
-    Session --> Save[Debounced save of conversation]
-    Capture --> Stop[Stop or manual continuous stop]
-    Stop --> Abort[Abort pending AI and summary requests]
-    Abort --> Reset[Clear capture state and stop Rust capture]
+    Access -- はい --> Capture[VAD とデバイスを指定してキャプチャを開始]
+    Capture --> Segment[オーディオセグメントを受信]
+    Segment --> STT[Tauri API 経由で文字起こし]
+    STT --> Session[セッションの文字起こしと応答状態を更新]
+    Session --> Save[会話をデバウンス保存]
+    Capture --> Stop[停止または手動で連続モードを停止]
+    Stop --> Abort[保留中の AI と要約のリクエストを中断]
+    Abort --> Reset[キャプチャ状態をクリアして Rust のキャプチャを停止]
 ```
 
-*The workflow branches on native permission state, then joins transcription, UI state, and persistence.*
+*このワークフローはネイティブの権限状態に応じて分岐し、その後、文字起こし、UI 状態、永続化が合流します。*
 
-## Modes and state
+## モードと状態
 
-VAD-enabled capture detects segments automatically. When VAD is disabled, the hook enters continuous mode and exposes a manual stop/send action through `manual_stop_continuous`. The hook tracks capture, processing, AI processing, setup-required, error, and popover state. Starting a new conversation resets the conversation, session transcript, summary, and processing state.
+VAD を有効にしたキャプチャでは、セグメントが自動的に検出されます。VAD を無効にすると、フックは連続モードに入り、`manual_stop_continuous` を通じて手動の停止／送信アクションを提供します。フックは、キャプチャ、処理中、AI 処理中、セットアップが必要、エラー、ポップオーバーの各状態を追跡します。新しい会話を開始すると、会話、セッションの文字起こし、要約、処理状態がリセットされます。
 
-Stopping calls `stop_system_audio_capture` and aborts both the ordinary AI request and summary request. It intentionally retains the last transcription and AI response so the panel can remain useful after capture stops. A 500 ms debounce (from `CONVERSATION_SAVE_DEBOUNCE_MS`) avoids concurrent saves while messages are changing.
+停止時には `stop_system_audio_capture` を呼び出し、通常の AI リクエストと要約リクエストの両方を中断します。キャプチャ停止後もパネルを引き続き有用な状態に保てるよう、最後の文字起こし結果と AI 応答は意図的に保持します。`CONVERSATION_SAVE_DEBOUNCE_MS` による 500 ミリ秒のデバウンスにより、メッセージの変更中に保存が同時実行されることを防ぎます。
 
-## Recent evolution
+## 最近の変化
 
-Git history is important context here: `389382a` introduced STT-only mode, `0cd3fac` accumulated session transcript text, and `8adcd54` added the top-bar summary panel. The associated OpenSpec proposals and synchronized specs under `openspec/changes/` and `openspec/specs/` are the behavioral record to consult before changing transcript display or reset semantics.
+ここでは Git の履歴が重要な背景情報になります。`389382a` は STT 専用モードを導入し、`0cd3fac` はセッションの文字起こしテキストを蓄積するようにし、`8adcd54` はトップバーの要約パネルを追加しました。`openspec/changes/` と `openspec/specs/` 配下にある関連する OpenSpec 提案および同期済み仕様が、文字起こしの表示やリセットのセマンティクスを変更する前に参照すべき動作上の記録です。
 
-The UI surface is split across `src/pages/app/components/speech/`, `TranscriptionPanel.tsx`, and `SummaryPanel.tsx`; native capture and VAD implementation is under `src-tauri/src/speaker/`. Provider calls cross the backend boundary described in [Runtime architecture](../architecture/overview.md) and resulting conversations use [local persistence](../domain/data-and-settings.md).
+UI の表示領域は `src/pages/app/components/speech/`、`TranscriptionPanel.tsx`、`SummaryPanel.tsx` に分かれており、ネイティブのキャプチャと VAD の実装は `src-tauri/src/speaker/` にあります。プロバイダー呼び出しは [ランタイムアーキテクチャ](../architecture/overview.md) で説明されているバックエンド境界を越えて実行され、生成された会話には [ローカル永続化](../domain/data-and-settings.md) が使用されます。
 
-## Change hazards
+## 変更時の注意点
 
-- Test permission denial and recovery on each target OS.
-- Preserve abort cleanup on unmount and stop; otherwise audio or provider work can outlive the overlay.
-- Keep session-only transcript state distinct from persisted conversation messages.
-- Changes to VAD config must update both local storage and the Rust `update_vad_config` command.
+- 各対象 OS で、権限拒否とその復旧をテストする。
+- アンマウント時と停止時の中断処理を維持する。そうしないと、オーディオやプロバイダーの処理がオーバーレイの終了後も存続する可能性がある。
+- セッション限定の文字起こし状態と、永続化された会話メッセージを区別する。
+- VAD 設定を変更する場合は、ローカルストレージと Rust の `update_vad_config` コマンドの両方を更新する。

@@ -1,3 +1,3 @@
-# Files
+# ファイル
 
-- [Development, Release, and Privacy Runbook](release-and-privacy.md) - Practical commands and cautions for local development, static checks, Tauri packaging, release branches, permissions, telemetry, and sensitive local data.
+- [開発、リリース、プライバシーのランブック](release-and-privacy.md) - ローカル開発、静的チェック、Tauri パッケージング、リリースブランチ、権限、テレメトリー、ローカルの機密データに関する実用的なコマンドと注意事項。

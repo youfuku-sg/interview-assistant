@@ -1,32 +1,32 @@
 ---
-type: Source Map
-title: Interview-Pilot Source Map
-description: Navigation map from major product concerns to the repository files, specifications, and operational documents that define them.
+type: ソースマップ
+title: インタビュー・パイロットのソースマップ
+description: 主な製品上の関心領域から、それらを定義するリポジトリファイル、仕様、運用ドキュメントへのナビゲーションマップです。
 tags: [source-map, navigation, repository]
 ---
 
-# Source Map
+# ソースマップ
 
-Use this map to choose the smallest authoritative slice before editing. Generated wiki pages summarize behavior; source and OpenSpec remain authoritative for implementation and acceptance details.
+編集前に、最小限の権威ある範囲を選択するためにこのマップを使用してください。生成された Wiki ページは動作を要約したものであり、実装および受け入れ条件の詳細については、ソースと OpenSpec が引き続き権威となります。
 
-| Area | Primary source anchors | Related concept |
+| 領域 | 主なソースアンカー | 関連概念 |
 | --- | --- | --- |
-| Application entry and routes | `src/main.tsx`, `src/routes/index.tsx`, `src/pages/index.ts` | [Runtime architecture](architecture/overview.md) |
-| Overlay and dashboard layout | `src/pages/app/`, `src/layouts/`, `src/pages/dashboard/` | [Runtime architecture](architecture/overview.md) |
-| Shared state and provider UX | `src/contexts/`, `src/hooks/`, `src/config/`, `src/pages/settings/`, `src/pages/dev/` | [Providers and capture](integrations/providers-and-capture.md) |
-| AI, STT, and prompt API | `src-tauri/src/api.rs`, `src/lib/functions/`, `src/pages/system-prompts/` | [Providers and capture](integrations/providers-and-capture.md) |
-| Audio, VAD, and transcript panel | `src/hooks/useSystemAudio.ts`, `src-tauri/src/speaker/`, `src/pages/app/components/speech/`, `TranscriptionPanel.tsx`, `SummaryPanel.tsx` | [Audio workflow](workflows/audio-and-transcription.md) |
-| Screenshots and windows | `src-tauri/src/capture.rs`, `src-tauri/src/window.rs`, `src/pages/screenshot/` | [Runtime architecture](architecture/overview.md) |
-| Global shortcuts | `src-tauri/src/shortcuts.rs`, `src/hooks/useGlobalShortcuts.ts`, `src/pages/shortcuts/` | [Runtime architecture](architecture/overview.md) |
-| Durable data | `src-tauri/src/db/migrations/`, `src-tauri/src/db/`, `src/lib/` | [Data and settings](domain/data-and-settings.md) |
-| Native bootstrap | `src-tauri/src/lib.rs`, `src-tauri/src/main.rs`, `src-tauri/tauri.conf.json`, `src-tauri/capabilities/` | [Runtime architecture](architecture/overview.md) |
-| Quality and delivery | `package.json`, `eslint.config.js`, `.github/workflows/`, `docs/仕様/CI.md`, `docs/仕様/ブランチ・リリース戦略.md` | [Testing guidance](testing/testing-guidance.md) and [Runbook](operations/release-and-privacy.md) |
-| Behavioral history | `openspec/specs/`, `openspec/changes/`, `CHANGELOG.md` | [Audio workflow](workflows/audio-and-transcription.md) |
+| アプリケーションのエントリーポイントとルート | `src/main.tsx`、`src/routes/index.tsx`、`src/pages/index.ts` | [ランタイムアーキテクチャ](architecture/overview.md) |
+| オーバーレイとダッシュボードのレイアウト | `src/pages/app/`、`src/layouts/`、`src/pages/dashboard/` | [ランタイムアーキテクチャ](architecture/overview.md) |
+| 共有状態とプロバイダー UX | `src/contexts/`、`src/hooks/`、`src/config/`、`src/pages/settings/`、`src/pages/dev/` | [プロバイダーとキャプチャ](integrations/providers-and-capture.md) |
+| AI、STT、プロンプト API | `src-tauri/src/api.rs`、`src/lib/functions/`、`src/pages/system-prompts/` | [プロバイダーとキャプチャ](integrations/providers-and-capture.md) |
+| オーディオ、VAD、トランスクリプトパネル | `src/hooks/useSystemAudio.ts`、`src-tauri/src/speaker/`、`src/pages/app/components/speech/`、`TranscriptionPanel.tsx`、`SummaryPanel.tsx` | [オーディオワークフロー](workflows/audio-and-transcription.md) |
+| スクリーンショットとウィンドウ | `src-tauri/src/capture.rs`、`src-tauri/src/window.rs`、`src/pages/screenshot/` | [ランタイムアーキテクチャ](architecture/overview.md) |
+| グローバルショートカット | `src-tauri/src/shortcuts.rs`、`src/hooks/useGlobalShortcuts.ts`、`src/pages/shortcuts/` | [ランタイムアーキテクチャ](architecture/overview.md) |
+| 永続データ | `src-tauri/src/db/migrations/`、`src-tauri/src/db/`、`src/lib/` | [データと設定](domain/data-and-settings.md) |
+| ネイティブのブートストラップ | `src-tauri/src/lib.rs`、`src-tauri/src/main.rs`、`src-tauri/tauri.conf.json`、`src-tauri/capabilities/` | [ランタイムアーキテクチャ](architecture/overview.md) |
+| 品質とデリバリー | `package.json`、`eslint.config.js`、`.github/workflows/`、`docs/仕様/CI.md`、`docs/仕様/ブランチ・リリース戦略.md` | [テストガイダンス](testing/testing-guidance.md)および[ランブック](operations/release-and-privacy.md) |
+| 挙動の履歴 | `openspec/specs/`、`openspec/changes/`、`CHANGELOG.md` | [オーディオワークフロー](workflows/audio-and-transcription.md) |
 
-## History anchors
+## 履歴アンカー
 
-The recent transcript feature sequence is visible in git as `389382a` (STT-only), `0cd3fac` (session accumulation), and `8adcd54` (summary panel). Before changing those surfaces, compare current code with the active proposal at `openspec/changes/top-bar-transcript-summary-panel/` and the synchronized specs.
+最近のトランスクリプト機能の変遷は、git 上で `389382a`（STT のみ）、`0cd3fac`（セッションへの蓄積）、`8adcd54`（サマリーパネル）として確認できます。これらの領域を変更する前に、現在のコードと `openspec/changes/top-bar-transcript-summary-panel/` にあるアクティブな提案、および同期済みの仕様を比較してください。
 
-The working tree also contains uncommitted documentation/automation changes and an untracked audio file at initialization. Those are not treated as application behavior by this map.
+作業ツリーには、コミットされていないドキュメントおよび自動化の変更と、初期化時点から追跡されていないオーディオファイルも含まれています。このマップでは、これらをアプリケーションの挙動として扱いません。
 
-This map points to the [quickstart](quickstart.md), which routes engineers through the [architecture](architecture/overview.md), [workflows](workflows/audio-and-transcription.md), [data model](domain/data-and-settings.md), [integrations](integrations/providers-and-capture.md), [operations](operations/release-and-privacy.md), and [testing](testing/testing-guidance.md) concepts.
+このマップは[クイックスタート](quickstart.md)を指しており、エンジニアを[アーキテクチャ](architecture/overview.md)、[ワークフロー](workflows/audio-and-transcription.md)、[データモデル](domain/data-and-settings.md)、[インテグレーション](integrations/providers-and-capture.md)、[運用](operations/release-and-privacy.md)、[テスト](testing/testing-guidance.md)の各概念へ案内します。

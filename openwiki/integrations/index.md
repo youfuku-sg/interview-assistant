@@ -1,3 +1,3 @@
-# Files
+# ファイル
 
-- [AI STT Providers and Native Capture](providers-and-capture.md) - Maps configurable AI and speech-to-text provider integration, direct request handling, screenshot capture, system audio, and platform permission dependencies.
+- [AI STT プロバイダーとネイティブキャプチャ](providers-and-capture.md) - 設定可能な AI および音声テキスト変換プロバイダーの統合、直接リクエスト処理、スクリーンショットキャプチャ、システムオーディオ、プラットフォーム権限の依存関係を示します。

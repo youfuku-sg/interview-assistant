@@ -1,3 +1,3 @@
-# Files
+# ファイル
 
-- [Testing and Change Guidance](testing-guidance.md) - Provides the repository's available static checks and a change-oriented verification matrix for frontend, Rust commands, audio capture, persistence, providers, and releases.
+- [テストと変更に関するガイダンス](testing-guidance.md) - リポジトリで利用可能な静的チェックと、フロントエンド、Rust コマンド、音声キャプチャ、永続化、プロバイダー、リリースを対象とした変更指向の検証マトリクスを提供します。

@@ -1,3 +1,3 @@
-# Files
+# ファイル
 
-- [Local Data and Settings](data-and-settings.md) - Describes SQLite conversation storage, system prompts, local settings, secure API-key storage, and the boundaries between durable data and session state.
+- [ローカルデータと設定](data-and-settings.md) - SQLite による会話の保存、システムプロンプト、ローカル設定、安全な API キー保存、永続データとセッション状態の境界について説明します。

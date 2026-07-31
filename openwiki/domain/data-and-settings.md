@@ -1,17 +1,17 @@
 ---
-type: Data Model
-title: Local Data and Settings
-description: Describes SQLite conversation storage, system prompts, local settings, secure API-key storage, and the boundaries between durable data and session state.
+type: データモデル
+title: ローカルデータと設定
+description: SQLite による会話の保存、システムプロンプト、ローカル設定、安全な API キー保存、永続データとセッション状態の境界について説明します。
 tags: [data, sqlite, settings, privacy, persistence]
 ---
 
-# Local Data and Settings
+# ローカルデータと設定
 
-The app is local-first but not provider-isolated: durable conversations and most preferences remain on the device, while selected prompts, images, and audio are sent to the configured AI or STT service. Treat provider configuration and privacy behavior as separate concerns.
+このアプリはローカルファーストですが、プロバイダーから完全に分離されているわけではありません。永続的な会話とほとんどの設定はデバイス上に保持される一方、選択したプロンプト、画像、音声は設定された AI または STT サービスに送信されます。プロバイダー設定とプライバシー動作は別の関心事として扱ってください。
 
-## Durable chat and prompt model
+## 永続的なチャットとプロンプトのモデル
 
-Tauri SQL initializes `sqlite:pluely.db` and applies migrations from `src-tauri/src/db/migrations/`. `chat-history.sql` defines `conversations` and `messages`; messages have `user`, `assistant`, or `system` roles, optional serialized `attached_files`, and a foreign key with cascade deletion. Indexes support conversation ordering, message lookup, timestamp ordering, and role filtering. Insert/update triggers advance the parent conversation's `updated_at`.
+Tauri SQL は `sqlite:pluely.db` を初期化し、`src-tauri/src/db/migrations/` からマイグレーションを適用します。`chat-history.sql` は `conversations` と `messages` を定義します。メッセージには `user`、`assistant`、`system` のいずれかのロール、任意のシリアル化された `attached_files`、およびカスケード削除付きの外部キーがあります。インデックスは、会話の並べ替え、メッセージ検索、タイムスタンプ順序、ロールによるフィルタリングをサポートします。挿入・更新トリガーは、親会話の `updated_at` を更新します。
 
 ```mermaid
 erDiagram
@@ -32,16 +32,16 @@ erDiagram
     }
 ```
 
-*The durable chat model is a conversation with ordered messages and optional attachment metadata.*
+*永続的なチャットモデルは、順序付けられたメッセージと任意の添付ファイルメタデータを持つ会話です。*
 
-System prompts are stored separately by `system-prompts.sql` and managed through dashboard pages and Tauri API commands. The React conversation types and save helpers in `src/lib/` are the frontend representation; the migration remains authoritative for schema behavior. New schema changes should be added as a new migration version rather than rewriting existing migrations.
+システムプロンプトは `system-prompts.sql` によって個別に保存され、ダッシュボードページと Tauri API コマンドを通じて管理されます。`src/lib/` にある React の会話型と保存ヘルパーはフロントエンド側の表現であり、スキーマの動作についてはマイグレーションが正式な定義となります。新しいスキーマ変更は、既存のマイグレーションを書き換えるのではなく、新しいマイグレーションバージョンとして追加してください。
 
-## Session state versus persistence
+## セッション状態と永続化
 
-`useSystemAudio.ts` keeps `sessionTranscript`, `lastTranscription`, `sessionSummary`, and processing flags in React state. The audio workflow eventually saves conversation messages into SQLite, but summary display state is reset by `startNewConversation` independently of the database. This distinction matters when changing the transcript panel: a visible session transcript is not automatically a durable record.
+`useSystemAudio.ts` は、`sessionTranscript`、`lastTranscription`、`sessionSummary`、および処理フラグを React の状態として保持します。音声ワークフローは最終的に会話メッセージを SQLite に保存しますが、要約の表示状態はデータベースとは独立して `startNewConversation` によってリセットされます。トランスクリプトパネルを変更する際には、この違いが重要です。表示されているセッションのトランスクリプトが、自動的に永続的な記録になるわけではありません。
 
-## Settings and secrets
+## 設定と秘密情報
 
-App, response, audio, screenshot, shortcut, and provider preferences are managed through the app context, hooks, and settings pages. Lightweight preferences such as VAD configuration use local storage. API keys and license-related secrets use secure-storage commands backed by the keychain plugin where available; do not log or document their values. The implementation also contains license-related persistence code in `src-tauri/src/api.rs`, so claims about complete keychain protection require end-to-end verification.
+アプリ、応答、音声、スクリーンショット、ショートカット、プロバイダーに関する設定は、アプリコンテキスト、フック、設定ページを通じて管理されます。VAD 設定などの軽量な設定にはローカルストレージを使用します。API キーとライセンス関連の秘密情報には、利用可能な場合はキーチェーンプラグインをバックエンドとする secure-storage コマンドを使用します。これらの値をログに記録したり、文書化したりしないでください。実装には `src-tauri/src/api.rs` にライセンス関連の永続化コードも含まれているため、完全なキーチェーン保護について主張するにはエンドツーエンドの検証が必要です。
 
-The [Runtime architecture](../architecture/overview.md) describes the command and storage boundary. [Providers and capture](../integrations/providers-and-capture.md) describes what can leave the device, while [Testing guidance](../testing/testing-guidance.md) lists persistence and privacy checks to perform when this model changes.
+[ランタイムアーキテクチャ](../architecture/overview.md)では、コマンドとストレージの境界について説明しています。[プロバイダーとキャプチャ](../integrations/providers-and-capture.md)では、デバイス外部に送信される可能性のあるものについて説明し、[テストガイダンス](../testing/testing-guidance.md)では、このモデルを変更する際に実施すべき永続性とプライバシーのチェックを列挙しています。

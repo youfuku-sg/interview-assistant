@@ -1,3 +1,3 @@
-# Files
+# ファイル
 
-- [Audio Capture and Transcription Workflow](audio-and-transcription.md) - Documents microphone and system-audio capture, VAD and continuous mode, STT and optional AI processing, session transcript state, and debounced conversation saving.
+- [オーディオキャプチャと文字起こしのワークフロー](audio-and-transcription.md) - マイクとシステムオーディオのキャプチャ、VAD と連続モード、STT とオプションの AI 処理、セッションの文字起こし状態、デバウンスされた会話の保存について説明します。

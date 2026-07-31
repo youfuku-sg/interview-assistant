@@ -2,12 +2,12 @@
 okf_version: "0.1"
 ---
 
-# Files
+# ファイル
 
-- [Interview-Pilot Quickstart](quickstart.md) - Entry point for engineers working on Interview-Pilot, a local-first Tauri desktop application with a React and TypeScript UI, local conversation storage, audio transcription, screenshot capture, and configurable AI providers.
-- [Interview-Pilot Source Map](source-map.md) - Navigation map from major product concerns to the repository files, specifications, and operational documents that define them.
+- [Interview-Pilot クイックスタート](quickstart.md) - Interview-Pilot に取り組むエンジニア向けの入口。React と TypeScript の UI、ローカルの会話ストレージ、音声文字起こし、スクリーンショットキャプチャ、設定可能な AI プロバイダーを備えた、ローカルファーストの Tauri デスクトップアプリケーション。
+- [インタビュー・パイロットのソースマップ](source-map.md) - 主な製品上の関心領域から、それらを定義するリポジトリファイル、仕様、運用ドキュメントへのナビゲーションマップです。
 
-# Directories
+# ディレクトリ
 
 - [architecture](architecture/)
 - [domain](domain/)
