@@ -61,28 +61,51 @@ jobs:
             Write-Host "LM Studio not reachable or call failed: $_"
           }
 
-      - name: Check Lemonade (localhost:13305)
+      - name: Check openspec and openwiki are present in the checked-out workspace
+        shell: powershell
+        run: |
+          Write-Host "Workspace: $env:GITHUB_WORKSPACE"
+
+          $paths = @(
+            "openwiki\quickstart.md",
+            "openspec\config.yaml",
+            "openspec\specs"
+          )
+          foreach ($p in $paths) {
+            if (Test-Path $p) {
+              Write-Host "FOUND: $p"
+            } else {
+              Write-Host "MISSING: $p"
+            }
+          }
+
+          Write-Host "openspec/specs capabilities:"
+          Get-ChildItem "openspec\specs" -Directory | ForEach-Object { Write-Host " - $($_.Name)" }
+
+      - name: Ask LM Studio a question grounded in openwiki content
         shell: powershell
         run: |
           try {
-            $models = Invoke-RestMethod -Uri "http://localhost:13305/v1/models" -Method Get -TimeoutSec 10
-            Write-Host "Lemonade reachable. Models:"
-            $models.data | ForEach-Object { Write-Host " - $($_.id)" }
+            $quickstart = Get-Content -Path "openwiki\quickstart.md" -Raw
 
-            if ($models.data.Count -gt 0) {
-              $modelId = $models.data[0].id
-              Write-Host "Calling chat/completions with model '$modelId'..."
-              $body = @{
-                model = $modelId
-                messages = @(@{ role = "user"; content = "Reply with exactly the word: ok" })
-                stream = $false
-              } | ConvertTo-Json -Depth 5
-
-              $resp = Invoke-RestMethod -Uri "http://localhost:13305/v1/chat/completions" -Method Post -ContentType "application/json" -Body $body -TimeoutSec 60
-              Write-Host "Response: $($resp.choices[0].message.content)"
-            } else {
-              Write-Host "No models loaded in Lemonade."
+            $models = Invoke-RestMethod -Uri "http://localhost:1234/v1/models" -Method Get -TimeoutSec 10
+            if ($models.data.Count -eq 0) {
+              Write-Host "No models loaded in LM Studio."
+              exit 0
             }
+            $modelId = $models.data[0].id
+            Write-Host "Using model '$modelId'"
+
+            $prompt = "Here is a project document:`n---`n$quickstart`n---`nBased only on the document above, answer in one short sentence: what tech stack does this project use?"
+
+            $body = @{
+              model = $modelId
+              messages = @(@{ role = "user"; content = $prompt })
+              stream = $false
+            } | ConvertTo-Json -Depth 5
+
+            $resp = Invoke-RestMethod -Uri "http://localhost:1234/v1/chat/completions" -Method Post -ContentType "application/json" -Body $body -TimeoutSec 120
+            Write-Host "Model answer: $($resp.choices[0].message.content)"
           } catch {
-            Write-Host "Lemonade not reachable or call failed: $_"
+            Write-Host "Call failed: $_"
           }
