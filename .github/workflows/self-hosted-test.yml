@@ -13,37 +13,6 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - name: Diagnose checkout state
-        shell: powershell
-        run: |
-          Write-Host "=== workspace root listing ==="
-          Get-ChildItem $env:GITHUB_WORKSPACE -Force | ForEach-Object { Write-Host $_.Name }
-
-          Write-Host "`n=== git status ==="
-          git status
-
-          Write-Host "`n=== git log -1 ==="
-          git log -1 --oneline
-
-          Write-Host "`n=== git config --global core.excludesfile ==="
-          git config --global core.excludesfile
-
-          Write-Host "`n=== git config --global -l ==="
-          git config --global -l
-
-          Write-Host "`n=== sparse-checkout file (if any) ==="
-          if (Test-Path ".git\info\sparse-checkout") {
-            Get-Content ".git\info\sparse-checkout"
-          } else {
-            Write-Host "(none)"
-          }
-
-          Write-Host "`n=== core.sparseCheckout setting ==="
-          git config core.sparseCheckout
-
-          Write-Host "`n=== .gitignore as seen in this checkout ==="
-          Get-Content ".gitignore"
-
       - name: Show runner info
         shell: powershell
         run: |
