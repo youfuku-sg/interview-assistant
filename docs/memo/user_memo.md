@@ -24,7 +24,7 @@ mainにリリースしてください
 openspecで起票したい
 ---
 
-speech panel show accumulated transcript
+top bar transcript summary panel
 
 この実装をお願いしたい
 まずはブランチを切って、今のopenspecの差分を全てコミットしてから

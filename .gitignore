@@ -27,3 +27,5 @@ openspec
 docs
 .claude
 .vscode
+
+*.mp3

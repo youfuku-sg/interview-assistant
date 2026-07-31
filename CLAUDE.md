@@ -28,3 +28,13 @@ Skills live in both `.claude/skills/<name>/` (Claude Code) and `.codex/skills/<n
 
 - `.claude/settings.json` (git-tracked) holds permission rules safe to share across the team/repo — read-only or narrowly-scoped commands (`git status`, `openspec status *`, `npm run *`, etc.).
 - `.claude/settings.local.json` (gitignored, personal) holds broad or environment-specific permissions (e.g. `Bash(*)`). Do not move broad allowances into `settings.json`.
+
+<!-- OPENWIKI:START -->
+
+## OpenWiki
+
+This repository uses OpenWiki for recurring code documentation. Start with `openwiki/quickstart.md`, then follow its links to architecture, workflows, domain concepts, operations, integrations, testing guidance, and source maps.
+
+The scheduled OpenWiki GitHub Actions workflow refreshes the repository wiki. Do not hand-edit generated OpenWiki pages unless explicitly asked; prefer updating source code/docs and letting OpenWiki regenerate.
+
+<!-- OPENWIKI:END -->
