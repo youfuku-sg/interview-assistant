@@ -2,6 +2,9 @@ name: Self-hosted Runner Test
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - feature/self-hosted-runner-verify
 
 jobs:
   test:
