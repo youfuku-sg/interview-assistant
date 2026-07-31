@@ -11,14 +11,14 @@ jobs:
     runs-on: [self-hosted, Windows, X64]
     steps:
       - name: Show runner info
-        shell: pwsh
+        shell: powershell
         run: |
           Write-Host "Hostname: $env:COMPUTERNAME"
           Write-Host "User: $env:USERNAME"
           whoami
 
       - name: Check for claude CLI
-        shell: pwsh
+        shell: powershell
         run: |
           if (Get-Command claude -ErrorAction SilentlyContinue) {
             claude --version
@@ -27,7 +27,7 @@ jobs:
           }
 
       - name: Check for codex CLI
-        shell: pwsh
+        shell: powershell
         run: |
           if (Get-Command codex -ErrorAction SilentlyContinue) {
             codex --version
