@@ -34,3 +34,55 @@ jobs:
           } else {
             Write-Host "codex CLI not found in PATH"
           }
+
+      - name: Check LM Studio (localhost:1234)
+        shell: powershell
+        run: |
+          try {
+            $models = Invoke-RestMethod -Uri "http://localhost:1234/v1/models" -Method Get -TimeoutSec 10
+            Write-Host "LM Studio reachable. Models:"
+            $models.data | ForEach-Object { Write-Host " - $($_.id)" }
+
+            if ($models.data.Count -gt 0) {
+              $modelId = $models.data[0].id
+              Write-Host "Calling chat/completions with model '$modelId'..."
+              $body = @{
+                model = $modelId
+                messages = @(@{ role = "user"; content = "Reply with exactly the word: ok" })
+                stream = $false
+              } | ConvertTo-Json -Depth 5
+
+              $resp = Invoke-RestMethod -Uri "http://localhost:1234/v1/chat/completions" -Method Post -ContentType "application/json" -Body $body -TimeoutSec 60
+              Write-Host "Response: $($resp.choices[0].message.content)"
+            } else {
+              Write-Host "No models loaded in LM Studio."
+            }
+          } catch {
+            Write-Host "LM Studio not reachable or call failed: $_"
+          }
+
+      - name: Check Lemonade (localhost:13305)
+        shell: powershell
+        run: |
+          try {
+            $models = Invoke-RestMethod -Uri "http://localhost:13305/v1/models" -Method Get -TimeoutSec 10
+            Write-Host "Lemonade reachable. Models:"
+            $models.data | ForEach-Object { Write-Host " - $($_.id)" }
+
+            if ($models.data.Count -gt 0) {
+              $modelId = $models.data[0].id
+              Write-Host "Calling chat/completions with model '$modelId'..."
+              $body = @{
+                model = $modelId
+                messages = @(@{ role = "user"; content = "Reply with exactly the word: ok" })
+                stream = $false
+              } | ConvertTo-Json -Depth 5
+
+              $resp = Invoke-RestMethod -Uri "http://localhost:13305/v1/chat/completions" -Method Post -ContentType "application/json" -Body $body -TimeoutSec 60
+              Write-Host "Response: $($resp.choices[0].message.content)"
+            } else {
+              Write-Host "No models loaded in Lemonade."
+            }
+          } catch {
+            Write-Host "Lemonade not reachable or call failed: $_"
+          }
