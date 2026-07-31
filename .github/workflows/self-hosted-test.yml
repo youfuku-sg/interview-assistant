@@ -1,0 +1,33 @@
+name: Self-hosted Runner Test
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: [self-hosted, Windows, X64]
+    steps:
+      - name: Show runner info
+        shell: pwsh
+        run: |
+          Write-Host "Hostname: $env:COMPUTERNAME"
+          Write-Host "User: $env:USERNAME"
+          whoami
+
+      - name: Check for claude CLI
+        shell: pwsh
+        run: |
+          if (Get-Command claude -ErrorAction SilentlyContinue) {
+            claude --version
+          } else {
+            Write-Host "claude CLI not found in PATH"
+          }
+
+      - name: Check for codex CLI
+        shell: pwsh
+        run: |
+          if (Get-Command codex -ErrorAction SilentlyContinue) {
+            codex --version
+          } else {
+            Write-Host "codex CLI not found in PATH"
+          }
