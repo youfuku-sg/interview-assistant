@@ -184,12 +184,18 @@ jobs:
             Write-Host "pip not found in PATH"
           }
 
-      - name: Install Aider
+      - name: Install Python 3.12 (aider does not support 3.13 yet)
         shell: powershell
         run: |
-          python -m pip install --upgrade pip setuptools wheel
-          pip install "aider-chat==0.86.2"
-          aider --version
+          winget install --id Python.Python.3.12 -e --silent --accept-package-agreements --accept-source-agreements
+          py -3.12 --version
+
+      - name: Install Aider on Python 3.12
+        shell: powershell
+        run: |
+          py -3.12 -m pip install --upgrade pip setuptools wheel
+          py -3.12 -m pip install aider-chat
+          py -3.12 -m aider --version
 
       - name: Run Aider headlessly against LM Studio
         shell: powershell
@@ -198,4 +204,4 @@ jobs:
           LM_STUDIO_API_KEY: dummy-api-key
           LM_STUDIO_API_BASE: http://localhost:1234/v1
         run: |
-          aider --model lm_studio/qwen3.6-35b-a3b-mtp --message "What tech stack does this project use? Answer in one short sentence, based on AGENTS.md." --yes --no-auto-commits --no-stream
+          py -3.12 -m aider --model lm_studio/qwen3.6-35b-a3b-mtp --message "What tech stack does this project use? Answer in one short sentence, based on AGENTS.md." --yes --no-auto-commits --no-stream
