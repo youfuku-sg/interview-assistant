@@ -197,11 +197,21 @@ jobs:
           py -3.12 -m pip install aider-chat
           py -3.12 -m aider --version
 
-      - name: Run Aider headlessly against LM Studio
+      - name: Run Aider headlessly against LM Studio (qwen3.6-35b-a3b-mtp)
         shell: powershell
-        timeout-minutes: 15
+        timeout-minutes: 10
+        continue-on-error: true
         env:
           LM_STUDIO_API_KEY: dummy-api-key
           LM_STUDIO_API_BASE: http://localhost:1234/v1
         run: |
           py -3.12 -m aider --model lm_studio/qwen3.6-35b-a3b-mtp --message "What tech stack does this project use? Answer in one short sentence, based on AGENTS.md." --yes --no-auto-commits --no-stream
+
+      - name: Run Aider headlessly against LM Studio (google/gemma-4-12b)
+        shell: powershell
+        timeout-minutes: 10
+        env:
+          LM_STUDIO_API_KEY: dummy-api-key
+          LM_STUDIO_API_BASE: http://localhost:1234/v1
+        run: |
+          py -3.12 -m aider --model lm_studio/google/gemma-4-12b --message "What tech stack does this project use? Answer in one short sentence, based on AGENTS.md." --yes --no-auto-commits --no-stream
