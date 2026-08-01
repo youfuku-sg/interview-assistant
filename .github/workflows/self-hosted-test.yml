@@ -64,6 +64,23 @@ jobs:
             Write-Host "LM Studio not reachable or call failed: $_"
           }
 
+      - name: Raw API call to LM Studio with google/gemma-4-12b specifically
+        shell: powershell
+        timeout-minutes: 5
+        run: |
+          try {
+            $body = @{
+              model = "google/gemma-4-12b"
+              messages = @(@{ role = "user"; content = "Reply with exactly the word: ok" })
+              stream = $false
+            } | ConvertTo-Json -Depth 5
+
+            $resp = Invoke-RestMethod -Uri "http://localhost:1234/v1/chat/completions" -Method Post -ContentType "application/json" -Body $body -TimeoutSec 120
+            Write-Host "Response: $($resp.choices[0].message.content)"
+          } catch {
+            Write-Host "Call failed: $_"
+          }
+
       - name: Check openspec and openwiki are present in the checked-out workspace
         shell: powershell
         run: |
@@ -198,6 +215,9 @@ jobs:
           py -3.12 -m aider --version
 
       - name: Run Aider headlessly against LM Studio (qwen3.6-35b-a3b-mtp)
+        # Consistently fails the same way (fetch failed after ~5min); skipping
+        # to iterate faster while isolating the gemma / raw-call comparison.
+        if: false
         shell: powershell
         timeout-minutes: 10
         continue-on-error: true
