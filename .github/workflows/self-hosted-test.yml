@@ -160,6 +160,10 @@ jobs:
           Get-Content "$configDir\opencode.json"
 
       - name: Run OpenCode headlessly against LM Studio
+        # Paused pending investigation (two failures so far: 55min hang with no
+        # output, then "Engine protocol predict request failed: fetch failed").
+        # Skipping for now to iterate faster on the Aider path.
+        if: false
         shell: powershell
         timeout-minutes: 15
         continue-on-error: true
@@ -183,7 +187,8 @@ jobs:
       - name: Install Aider
         shell: powershell
         run: |
-          pip install -U aider-chat
+          python -m pip install --upgrade pip setuptools wheel
+          pip install "aider-chat==0.86.2"
           aider --version
 
       - name: Run Aider headlessly against LM Studio
