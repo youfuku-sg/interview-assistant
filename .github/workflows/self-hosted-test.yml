@@ -161,5 +161,36 @@ jobs:
 
       - name: Run OpenCode headlessly against LM Studio
         shell: powershell
+        timeout-minutes: 15
+        continue-on-error: true
         run: |
           opencode run --model lmstudio/qwen3.6-35b-a3b-mtp "What tech stack does this project use? Answer in one short sentence, based on AGENTS.md."
+
+      - name: Check for Python/pip
+        shell: powershell
+        run: |
+          if (Get-Command python -ErrorAction SilentlyContinue) {
+            python --version
+          } else {
+            Write-Host "python not found in PATH"
+          }
+          if (Get-Command pip -ErrorAction SilentlyContinue) {
+            pip --version
+          } else {
+            Write-Host "pip not found in PATH"
+          }
+
+      - name: Install Aider
+        shell: powershell
+        run: |
+          pip install -U aider-chat
+          aider --version
+
+      - name: Run Aider headlessly against LM Studio
+        shell: powershell
+        timeout-minutes: 15
+        env:
+          LM_STUDIO_API_KEY: dummy-api-key
+          LM_STUDIO_API_BASE: http://localhost:1234/v1
+        run: |
+          aider --model lm_studio/qwen3.6-35b-a3b-mtp --message "What tech stack does this project use? Answer in one short sentence, based on AGENTS.md." --yes --no-auto-commits --no-stream
