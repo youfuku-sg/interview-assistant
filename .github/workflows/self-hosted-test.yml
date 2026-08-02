@@ -26,6 +26,62 @@ jobs:
           npm install -g @anthropic-ai/claude-code
           claude --version
 
+      - name: Trust this workspace in ~/.claude.json (so permissions.allow is honored)
+        shell: powershell
+        run: |
+          $claudeJsonPath = "$env:USERPROFILE\.claude.json"
+          $backupPath = "$env:USERPROFILE\.claude.json.bak"
+
+          if (-not (Test-Path $claudeJsonPath)) {
+            Write-Host "$claudeJsonPath does not exist; skipping (claude will create it on first run)"
+            exit 0
+          }
+
+          Copy-Item $claudeJsonPath $backupPath -Force
+          Write-Host "Backed up to $backupPath"
+
+          $json = Get-Content $claudeJsonPath -Raw | ConvertFrom-Json
+          $topLevelKeysBefore = @($json.PSObject.Properties.Name)
+          Write-Host "Top-level keys before: $($topLevelKeysBefore -join ', ')"
+
+          $projectPath = ($env:GITHUB_WORKSPACE -replace '\\', '/')
+          Write-Host "Trusting project path: $projectPath"
+
+          if (-not $json.projects) {
+            $json | Add-Member -MemberType NoteProperty -Name projects -Value ([PSCustomObject]@{}) -Force
+          }
+
+          $projectKeys = @($json.projects.PSObject.Properties.Name)
+          Write-Host "Existing trusted project count before: $($projectKeys.Count)"
+
+          if (-not ($projectKeys -contains $projectPath)) {
+            $json.projects | Add-Member -MemberType NoteProperty -Name $projectPath -Value ([PSCustomObject]@{}) -Force
+          }
+
+          $json.projects.$projectPath | Add-Member -MemberType NoteProperty -Name hasTrustDialogAccepted -Value $true -Force
+
+          $json | ConvertTo-Json -Depth 100 | Set-Content -Path $claudeJsonPath -Encoding utf8
+
+          # Verify: re-read, confirm valid JSON, confirm no top-level keys were lost, confirm the flag is set
+          $verify = Get-Content $claudeJsonPath -Raw | ConvertFrom-Json
+          $topLevelKeysAfter = @($verify.PSObject.Properties.Name)
+          Write-Host "Top-level keys after: $($topLevelKeysAfter -join ', ')"
+
+          $missing = $topLevelKeysBefore | Where-Object { $topLevelKeysAfter -notcontains $_ }
+          if ($missing) {
+            Write-Host "WARNING: top-level keys were lost during rewrite: $($missing -join ', '). Restoring backup."
+            Copy-Item $backupPath $claudeJsonPath -Force
+            exit 1
+          }
+
+          $flag = $verify.projects.$projectPath.hasTrustDialogAccepted
+          Write-Host "hasTrustDialogAccepted for this workspace is now: $flag"
+          if ($flag -ne $true) {
+            Write-Host "WARNING: flag was not set correctly. Restoring backup."
+            Copy-Item $backupPath $claudeJsonPath -Force
+            exit 1
+          }
+
       - name: Run Claude Code headlessly (using whatever local auth already exists)
         shell: powershell
         timeout-minutes: 10
