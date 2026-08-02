@@ -215,9 +215,7 @@ jobs:
           py -3.12 -m aider --version
 
       - name: Run Aider headlessly against LM Studio (qwen3.6-35b-a3b-mtp)
-        # Consistently fails the same way (fetch failed after ~5min); skipping
-        # to iterate faster while isolating the gemma / raw-call comparison.
-        if: false
+        # Re-enabled: GPU VRAM was exhausted, now freed up. Retrying.
         shell: powershell
         timeout-minutes: 10
         continue-on-error: true
