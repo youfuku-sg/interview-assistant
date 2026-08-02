@@ -1,6 +1,6 @@
 ## 1. Shared reference component
 
-- [ ] 1.1 Create `ShortcutReference` component in `src/pages/shortcuts/components/shortcuts/` that takes `actions: ShortcutAction[]` and `bindings: Record<string, ShortcutBinding>` (defaulting to `getAllShortcutActions()` / `getShortcutsConfig()` when not provided) and renders a compact, read-only list (name, description, `formatShortcutKeyForDisplay` key chord) with no toggles or edit buttons.
+- [ ] 1.1 Create `ShortcutReference` component in `src/pages/shortcuts/components/shortcuts/` that takes `actions: ShortcutAction[]` and `bindings: Record<string, ShortcutBinding>` (defaulting to `getAllShortcutActions()` / `getShortcutsConfig()` when not provided) and renders a compact, read-only list (name, description, `formatShortcutKeyForDisplay` key chord) with no toggles or edit buttons. Rows with `binding.enabled === false` must be visually marked as disabled (not shown identically to active rows), and the `move_window` action must keep the `+ (← ↑ ↓ →)` suffix used in `ShortcutManager`.
 - [ ] 1.2 Export `ShortcutReference` from `src/pages/shortcuts/components/shortcuts/index.tsx` and `src/pages/shortcuts/components/index.ts`.
 
 ## 2. Settings page integration
