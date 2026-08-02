@@ -31,6 +31,7 @@ jobs:
     runs-on: [self-hosted, Windows, X64]
     outputs:
       proposed: ${{ steps.push.outputs.proposed }}
+      change_name: ${{ steps.push.outputs.change_name }}
     steps:
       - name: Check out feature branch
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -84,10 +85,11 @@ jobs:
              branch, with a commit message referencing the issue number. Do
              not push -- that is handled separately.
 
-          5. Write a single line to the file at $statusFilePath`: either "OK"
-             on success, or "SKIP: <reason>" if the request is too vague to
-             turn into a concrete proposal (in which case do not create any
-             OpenSpec change or commit).
+          5. Write a single line to the file at $statusFilePath`: either
+             "OK: <the exact OpenSpec change name you used>" on success, or
+             "SKIP: <reason>" if the request is too vague to turn into a
+             concrete proposal (in which case do not create any OpenSpec
+             change or commit).
           "@ | Set-Content -Path $promptPath -Encoding utf8
 
           Get-Content -Raw $promptPath | claude -p --dangerously-skip-permissions
@@ -111,11 +113,136 @@ jobs:
             exit 0
           }
 
+          $changeName = $status -replace '^OK:\s*', ''
+          Write-Host "Change name: $changeName"
+
           git push origin "HEAD:refs/heads/${{ needs.create-branch.outputs.branch }}"
           echo "proposed=true" >> $env:GITHUB_OUTPUT
+          echo "change_name=$changeName" >> $env:GITHUB_OUTPUT
+
+  ai-review:
+    needs: [create-branch, propose]
+    if: needs.propose.outputs.proposed == 'true'
+    # Step 4.4 of the Issue駆動開発フロー: have every available AI (currently
+    # Claude Code and Codex) discuss the proposal and loop -- present, argue,
+    # revise, re-present -- until both agree, up to a bounded number of
+    # rounds (§7 未決事項: no cap was decided yet, so this uses a
+    # conservative default of 3 pending a real decision).
+    runs-on: [self-hosted, Windows, X64]
+    outputs:
+      consensus: ${{ steps.loop.outputs.consensus }}
+      rounds: ${{ steps.loop.outputs.rounds }}
+    steps:
+      - name: Check out feature branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ needs.create-branch.outputs.branch }}
+
+      - name: Claude/Codex review loop
+        id: loop
+        shell: powershell
+        env:
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          CHANGE_NAME: ${{ needs.propose.outputs.change_name }}
+        run: |
+          $maxRounds = 3
+          $changeDir = "openspec/changes/$env:CHANGE_NAME"
+          $reviewDir = "$env:RUNNER_TEMP\ai-review"
+          New-Item -ItemType Directory -Force -Path $reviewDir | Out-Null
+
+          $lastCodexNote = ""
+          $consensus = $false
+          $roundsUsed = 0
+
+          for ($round = 1; $round -le $maxRounds; $round++) {
+            $roundsUsed = $round
+            Write-Host "=== AI review round $round ==="
+
+            # --- Claude's turn ---
+            $claudeContext = if ($lastCodexNote) { "Codex's feedback from the previous round:`n$lastCodexNote`n" } else { "This is the first round; no prior feedback yet." }
+            @"
+          You are one of two AI reviewers (the other is Codex) discussing the
+          OpenSpec proposal at $changeDir for Issue #$env:ISSUE_NUMBER before
+          implementation begins.
+
+          $claudeContext
+
+          Re-read the current proposal.md, design.md, tasks.md, and any
+          specs/*/spec.md under $changeDir yourself. Cross-reference
+          openwiki/ and openspec/specs/ for the current implementation. If
+          you find real gaps, inconsistencies, or issues, edit the proposal
+          files directly to fix them. If you have nothing to change, do not
+          edit anything.
+
+          End your response with exactly one line, verbatim:
+          "VERDICT: AGREE" if the proposal as it now stands is ready to move
+          to human review, or "VERDICT: REQUEST_CHANGES" (with your
+          reasoning above it) if you believe further changes are still
+          needed.
+          "@ | Set-Content -Path "$reviewDir\claude-r$round.txt" -Encoding utf8
+
+            $claudeOutput = (Get-Content -Raw "$reviewDir\claude-r$round.txt" | claude -p --dangerously-skip-permissions | Out-String)
+            Set-Content -Path "$reviewDir\claude-r$round-output.md" -Value $claudeOutput -Encoding utf8
+            Write-Host $claudeOutput
+            $claudeVerdict = if ($claudeOutput -match "VERDICT:\s*AGREE") { "AGREE" } else { "REQUEST_CHANGES" }
+
+            $claudeChanged = [bool](git status --porcelain -- $changeDir)
+            if ($claudeChanged) {
+              git add -- $changeDir
+              git commit -m "AI review round $round (Claude): revise proposal for issue #$env:ISSUE_NUMBER" | Out-Null
+            }
+
+            # --- Codex's turn ---
+            @"
+          You are one of two AI reviewers (the other is Claude Code)
+          discussing the OpenSpec proposal at $changeDir for Issue
+          #$env:ISSUE_NUMBER before implementation begins.
+
+          Claude's feedback this round (it may have just edited the
+          proposal files -- re-read their current state yourself, don't
+          rely on this text alone):
+
+          $claudeOutput
+
+          Cross-reference openwiki/ and openspec/specs/ for the current
+          implementation. If you find real gaps, inconsistencies, or
+          issues, edit the proposal files directly to fix them. If you have
+          nothing to change, do not edit anything.
+
+          End your response with exactly one line, verbatim:
+          "VERDICT: AGREE" if the proposal as it now stands is ready to move
+          to human review, or "VERDICT: REQUEST_CHANGES" (with your
+          reasoning above it) if you believe further changes are still
+          needed.
+          "@ | Set-Content -Path "$reviewDir\codex-r$round.txt" -Encoding utf8
+
+            Get-Content -Raw "$reviewDir\codex-r$round.txt" | codex exec -s workspace-write -o "$reviewDir\codex-r$round-output.md" -
+            $codexOutput = Get-Content -Raw "$reviewDir\codex-r$round-output.md"
+            Write-Host $codexOutput
+            $codexVerdict = if ($codexOutput -match "VERDICT:\s*AGREE") { "AGREE" } else { "REQUEST_CHANGES" }
+            $lastCodexNote = $codexOutput
+
+            $codexChanged = [bool](git status --porcelain -- $changeDir)
+            if ($codexChanged) {
+              git add -- $changeDir
+              git commit -m "AI review round $round (Codex): revise proposal for issue #$env:ISSUE_NUMBER" | Out-Null
+            }
+
+            if ($claudeVerdict -eq "AGREE" -and $codexVerdict -eq "AGREE" -and -not $claudeChanged -and -not $codexChanged) {
+              Write-Host "Consensus reached after round $round."
+              $consensus = $true
+              break
+            }
+          }
+
+          git push origin "HEAD:refs/heads/${{ needs.create-branch.outputs.branch }}"
+
+          echo "consensus=$($consensus.ToString().ToLower())" >> $env:GITHUB_OUTPUT
+          echo "rounds=$roundsUsed" >> $env:GITHUB_OUTPUT
 
   comment:
-    needs: [create-branch, propose]
+    needs: [create-branch, propose, ai-review]
+    if: always()
     runs-on: ubuntu-latest
     steps:
       - name: Comment on the issue
@@ -123,13 +250,24 @@ jobs:
         env:
           BRANCH: ${{ needs.create-branch.outputs.branch }}
           PROPOSED: ${{ needs.propose.outputs.proposed }}
+          CONSENSUS: ${{ needs.ai-review.outputs.consensus }}
+          ROUNDS: ${{ needs.ai-review.outputs.rounds }}
         with:
           script: |
             const branch = process.env.BRANCH;
             const proposed = process.env.PROPOSED === 'true';
-            const body = proposed
-              ? `Draft OpenSpec proposal created on \`${branch}\`.\n\nCompare: https://github.com/${context.repo.owner}/${context.repo.repo}/compare/main...${branch}\n\nThis is a draft proposal awaiting review — nothing has been implemented yet.`
-              : `Branch \`${branch}\` was created, but a proposal could not be drafted automatically — it may need more detail. Check the workflow run logs for details.`;
+            const consensus = process.env.CONSENSUS === 'true';
+            const rounds = process.env.ROUNDS;
+
+            let body;
+            if (!proposed) {
+              body = `Branch \`${branch}\` was created, but a proposal could not be drafted automatically — it may need more detail. Check the workflow run logs for details.`;
+            } else if (consensus) {
+              body = `OpenSpec proposal on \`${branch}\` drafted and reviewed by Claude Code and Codex (consensus reached after ${rounds} round(s)).\n\nCompare: https://github.com/${context.repo.owner}/${context.repo.repo}/compare/main...${branch}\n\nAwaiting human review — nothing has been implemented yet.`;
+            } else {
+              body = `OpenSpec proposal on \`${branch}\` drafted, but Claude Code and Codex did not reach consensus after ${rounds} round(s) of review.\n\nCompare: https://github.com/${context.repo.owner}/${context.repo.repo}/compare/main...${branch}\n\nPlease review manually — the two AIs disagreed on something. Check the workflow run logs for each round's reasoning.`;
+            }
+
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
