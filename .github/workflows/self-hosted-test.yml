@@ -20,23 +20,31 @@ jobs:
           Write-Host "User: $env:USERNAME"
           whoami
 
-      - name: Check for claude CLI
+      - name: Install/verify Claude Code CLI via npm (existing native install isn't on the service's PATH)
         shell: powershell
         run: |
-          if (Get-Command claude -ErrorAction SilentlyContinue) {
-            claude --version
-          } else {
-            Write-Host "claude CLI not found in PATH"
-          }
+          npm install -g @anthropic-ai/claude-code
+          claude --version
 
-      - name: Check for codex CLI
+      - name: Run Claude Code headlessly (using whatever local auth already exists)
+        shell: powershell
+        timeout-minutes: 10
+        continue-on-error: true
+        run: |
+          claude -p "Reply with exactly the word: ok"
+
+      - name: Install/verify Codex CLI via npm (existing native install isn't on the service's PATH)
         shell: powershell
         run: |
-          if (Get-Command codex -ErrorAction SilentlyContinue) {
-            codex --version
-          } else {
-            Write-Host "codex CLI not found in PATH"
-          }
+          npm install -g @openai/codex
+          codex --version
+
+      - name: Run Codex headlessly (using whatever local auth already exists)
+        shell: powershell
+        timeout-minutes: 10
+        continue-on-error: true
+        run: |
+          codex exec "Reply with exactly the word: ok"
 
       - name: Check LM Studio (localhost:1234)
         shell: powershell
