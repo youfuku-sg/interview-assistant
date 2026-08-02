@@ -6,6 +6,7 @@
 ## 2. Settings page integration
 
 - [ ] 2.1 Add the read-only `ShortcutReference` section to `src/pages/shortcuts/index.tsx`, clearly headed (e.g. "ショートカット一覧") and visible without any interaction, alongside the existing `CursorSelection` and `ShortcutManager`.
+- [ ] 2.2 Connect `ShortcutManager`'s binding changes (key edits, enabled toggles, and reset) to the sibling `ShortcutReference` through page-owned state or an equivalent React notification path, so the reference updates immediately without requiring navigation or a page remount.
 
 ## 3. Help screen
 
@@ -17,4 +18,4 @@
 ## 4. Verification
 
 - [ ] 4.1 Run `npm run typecheck` and `npm run lint`.
-- [ ] 4.2 Manually run the app (`npm run tauri dev`), confirm the sidebar shows "ヘルプ", `/help` renders the shortcut list, `/shortcuts` shows the new read-only section above/alongside the editor, and changing a shortcut key in `ShortcutManager` is reflected after reopening `/help`.
+- [ ] 4.2 Manually run the app (`npm run tauri dev`), confirm the sidebar shows "ヘルプ", `/help` renders the shortcut list, `/shortcuts` shows the new read-only section above/alongside the editor, changing a shortcut key or enabled state immediately updates the reference on the same `/shortcuts` visit, reset immediately updates it as well, and the changes are reflected after opening `/help`.
