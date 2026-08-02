@@ -222,7 +222,10 @@ jobs:
         env:
           LM_STUDIO_API_KEY: dummy-api-key
           LM_STUDIO_API_BASE: http://localhost:1234/v1
+          PYTHONUTF8: "1"
+          PYTHONIOENCODING: utf-8
         run: |
+          chcp 65001
           py -3.12 -m aider --model lm_studio/qwen3.6-35b-a3b-mtp --message "What tech stack does this project use? Answer in one short sentence, based on AGENTS.md." --yes --no-auto-commits --no-stream
 
       - name: Run Aider headlessly against LM Studio (google/gemma-4-12b)
@@ -231,5 +234,8 @@ jobs:
         env:
           LM_STUDIO_API_KEY: dummy-api-key
           LM_STUDIO_API_BASE: http://localhost:1234/v1
+          PYTHONUTF8: "1"
+          PYTHONIOENCODING: utf-8
         run: |
+          chcp 65001
           py -3.12 -m aider --model lm_studio/google/gemma-4-12b --message "What tech stack does this project use? Answer in one short sentence, based on AGENTS.md." --yes --no-auto-commits --no-stream
