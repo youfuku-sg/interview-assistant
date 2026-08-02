@@ -41,22 +41,22 @@ jobs:
         shell: powershell
         env:
           ISSUE_NUMBER: ${{ github.event.issue.number }}
-          ISSUE_TITLE: ${{ github.event.issue.title }}
-          ISSUE_BODY: ${{ github.event.issue.body }}
         run: |
-          # Issue title/body are untrusted input. They are passed only via
-          # env vars (not interpolated into this script) and written to a
-          # file that Claude reads, so nothing here re-parses them as code.
+          # Issue title/body are untrusted input AND may contain non-ASCII
+          # (e.g. Japanese) text, which gets mangled when round-tripped
+          # through env vars on this Windows runner's console codepage.
+          # Instead, point Claude at $env:GITHUB_EVENT_PATH, the JSON file
+          # GitHub Actions always provides -- correct UTF-8 on disk,
+          # unaffected by console encoding.
           $promptPath = "$env:RUNNER_TEMP\claude-propose-prompt.txt"
           $statusFilePath = "$env:RUNNER_TEMP\claude-propose-status.txt"
 
           @"
-          A new GitHub Issue was just opened:
-
-          Issue #$env:ISSUE_NUMBER`: $env:ISSUE_TITLE
-
-          Body:
-          $env:ISSUE_BODY
+          A new GitHub Issue (#$env:ISSUE_NUMBER) was just opened. Read its
+          title and body from the "issue" object in the GitHub event payload
+          JSON file at: $env:GITHUB_EVENT_PATH
+          (read the file directly; do not rely on any shell/env copy of its
+          text, which may be mis-encoded on this Windows runner).
 
           You are already checked out on the feature branch created for this
           issue (``feature/$env:ISSUE_NUMBER``). Follow this repository's
