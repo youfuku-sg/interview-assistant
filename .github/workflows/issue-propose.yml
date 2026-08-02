@@ -84,7 +84,7 @@ jobs:
              branch, with a commit message referencing the issue number. Do
              not push -- that is handled separately.
 
-          5. Write a single line to the file at $statusFilePath: either "OK"
+          5. Write a single line to the file at $statusFilePath`: either "OK"
              on success, or "SKIP: <reason>" if the request is too vague to
              turn into a concrete proposal (in which case do not create any
              OpenSpec change or commit).
