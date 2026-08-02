@@ -1,0 +1,65 @@
+name: Codex
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  codex:
+    # codex-action has no built-in mention detection or PR/issue integration
+    # (unlike claude-code-action), so this workflow builds that wiring by hand:
+    # resolve the PR branch, run codex, push any changes, and post the result.
+    if: github.event.issue.pull_request != null && contains(github.event.comment.body, '@codex')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve PR head branch
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ref="$(gh pr view "${{ github.event.issue.number }}" --repo "${{ github.repository }}" --json headRefName -q .headRefName)"
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+
+      - name: Check out PR branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ steps.pr.outputs.ref }}
+
+      - name: Run Codex
+        id: codex
+        uses: openai/codex-action@52fe01ec70a42f454c9d2ebd47598f9fd6893d56 # v1
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          prompt: ${{ github.event.comment.body }}
+          sandbox: workspace-write
+
+      - name: Commit and push Codex changes
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            git config user.name "codex[bot]"
+            git config user.email "codex[bot]@users.noreply.github.com"
+            git add -A
+            git commit -m "chore: apply Codex changes from PR comment"
+            git push origin "HEAD:refs/heads/${{ steps.pr.outputs.ref }}"
+          else
+            echo "No changes from Codex to commit."
+          fi
+
+      - name: Post Codex result as comment
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        env:
+          CODEX_MESSAGE: ${{ steps.codex.outputs['final-message'] }}
+        with:
+          script: |
+            const message = process.env.CODEX_MESSAGE || "Codex finished but produced no message.";
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: message,
+            });

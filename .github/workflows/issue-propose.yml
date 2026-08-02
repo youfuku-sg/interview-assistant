@@ -1,0 +1,129 @@
+name: Issue → OpenSpec Proposal
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  propose:
+    # Runs on the self-hosted runner so Claude Code can use the machine's
+    # existing local login (no ANTHROPIC_API_KEY secret needed).
+    runs-on: [self-hosted, Windows, X64]
+    outputs:
+      branch: ${{ steps.read_branch.outputs.branch }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Create feature branch and OpenSpec proposal with Claude Code
+        shell: powershell
+        env:
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+        run: |
+          # Issue title/body are untrusted input. They are passed only via
+          # env vars (not interpolated into this script) and written to a
+          # file that Claude reads, so nothing here re-parses them as code.
+          $promptPath = "$env:RUNNER_TEMP\claude-propose-prompt.txt"
+          $branchFilePath = "$env:RUNNER_TEMP\claude-propose-branch.txt"
+
+          @"
+          A new GitHub Issue was just opened:
+
+          Issue #$env:ISSUE_NUMBER`: $env:ISSUE_TITLE
+
+          Body:
+          $env:ISSUE_BODY
+
+          Follow this repository's documented Issue駆動開発フロー
+          (docs/仕様/Issue駆動開発フロー.md), steps 4.1〜4.3, to turn this rough
+          request into an OpenSpec proposal. Do the following, in order:
+
+          1. Derive a short kebab-case description of the request from the
+             issue title/body (e.g. "improve-stt-error-handling"), and from it
+             the OpenSpec change name ``issue-$env:ISSUE_NUMBER-<short-description>``.
+             Decide this name once and reuse it for both the OpenSpec change
+             and the branch (step 2) -- do not derive it twice.
+
+          2. Read openwiki/quickstart.md and any linked OpenWiki pages
+             relevant to this request to ground it in the current
+             implementation, architecture, and constraints.
+
+          3. Create the OpenSpec change using the openspec-propose skill /
+             process:
+             ``openspec new change "issue-$env:ISSUE_NUMBER-<short-description>" --goal "Issue #$env:ISSUE_NUMBER"``
+             then generate proposal.md, design.md, tasks.md, and any
+             specs/<capability>/spec.md deltas required by the schema. Follow
+             the openspec-propose skill's guidance for what each artifact
+             should contain. Do not implement any code changes at this stage
+             -- only the OpenSpec proposal artifacts.
+
+          4. Create and check out a new branch named
+             ``feature/issue-$env:ISSUE_NUMBER-<short-description>`` (the same
+             ``<short-description>`` used for the OpenSpec change name) off of
+             ``main``. Do not commit anything to ``main`` directly.
+
+          5. Commit the new openspec/changes/<name>/ directory on the feature
+             branch, with a commit message referencing the issue number. Do
+             not push.
+
+          6. Write the exact branch name you created (and nothing else) to
+             the file at: $branchFilePath
+
+          If anything is critically ambiguous (e.g. the request is too vague
+          to turn into a concrete proposal), do not create a branch or
+          proposal. Instead write a single line starting with "SKIP: "
+          followed by the reason to $branchFilePath.
+          "@ | Set-Content -Path $promptPath -Encoding utf8
+
+          Get-Content -Raw $promptPath | claude -p --dangerously-skip-permissions
+
+          if (-not (Test-Path $branchFilePath)) {
+            Write-Host "Claude did not write a branch file; nothing to push."
+            exit 1
+          }
+          Get-Content $branchFilePath
+
+      - name: Read branch name and push
+        id: read_branch
+        shell: powershell
+        run: |
+          $branchFilePath = "$env:RUNNER_TEMP\claude-propose-branch.txt"
+          $result = (Get-Content $branchFilePath -Raw).Trim()
+
+          if ($result.StartsWith("SKIP:")) {
+            Write-Host "Skipped: $result"
+            echo "branch=" >> $env:GITHUB_OUTPUT
+            echo "skip_reason=$result" >> $env:GITHUB_OUTPUT
+            exit 0
+          }
+
+          Write-Host "Pushing branch: $result"
+          git push origin "HEAD:refs/heads/$result"
+          echo "branch=$result" >> $env:GITHUB_OUTPUT
+
+  comment:
+    needs: propose
+    runs-on: ubuntu-latest
+    steps:
+      - name: Comment on the issue
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        env:
+          BRANCH: ${{ needs.propose.outputs.branch }}
+        with:
+          script: |
+            const branch = process.env.BRANCH;
+            const body = branch
+              ? `Draft OpenSpec proposal created on \`${branch}\`.\n\nCompare: https://github.com/${context.repo.owner}/${context.repo.repo}/compare/main...${branch}\n\nThis is a draft proposal awaiting review — nothing has been implemented yet.`
+              : `Could not create a proposal automatically for this issue — it may need more detail. Check the workflow run logs for details.`;
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body,
+            });
