@@ -13,6 +13,6 @@
 
 ## 3. Verification
 
-- [ ] 3.1 Manually run the app (`npm run tauri dev`), open Settings > テーマのカスタマイズ, and confirm hovering/focusing ライト/ダーク/システム previews the appearance change and reverts when hover/focus leaves without a click.
-- [ ] 3.2 Confirm clicking an option still persists it (reload the app / check `localStorage` for the theme key) exactly as before this change.
+- [x] 3.1 Manually run the app (`npm run tauri dev`), open Settings > テーマのカスタマイズ, and confirm hovering/focusing ライト/ダーク/システム previews the appearance change and reverts when hover/focus leaves without a click.
+- [x] 3.2 Confirm clicking an option still persists it (reload the app / check `localStorage` for the theme key) exactly as before this change.
 - [x] 3.3 Run `npm run typecheck` and `npm run lint`.
