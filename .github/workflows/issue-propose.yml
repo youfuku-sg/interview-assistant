@@ -158,6 +158,7 @@ jobs:
           PYTHONUTF8: "1"
           PYTHONIOENCODING: utf-8
         run: |
+          $ErrorActionPreference = "Continue"
           chcp 65001 | Out-Null
           $maxRounds = 3
           $changeDir = "openspec/changes/$env:CHANGE_NAME"
@@ -269,7 +270,13 @@ jobs:
           needed.
           "@ | Set-Content -Path "$reviewDir\qwen-r$round.txt" -Encoding utf8
 
-            $qwenOutput = (py -3.12 -m aider --model lm_studio/qwen3.6-35b-a3b-mtp --message-file "$reviewDir\qwen-r$round.txt" --yes --no-auto-commits --no-stream 2>&1 | Out-String)
+            $qwenOutput = ""
+            try {
+              $qwenOutput = (py -3.12 -m aider --model lm_studio/qwen3.6-35b-a3b-mtp --message-file "$reviewDir\qwen-r$round.txt" --yes --no-auto-commits --no-stream 2>&1 | Out-String)
+            } catch {
+              Write-Host "qwen/Aider invocation threw an exception this round; treating as no feedback and continuing: $_"
+              $qwenOutput = "(qwen/Aider failed to run this round: $_)"
+            }
             Set-Content -Path "$reviewDir\qwen-r$round-output.md" -Value $qwenOutput -Encoding utf8
             Write-Host $qwenOutput
             $qwenVerdict = if ($qwenOutput -match "VERDICT:\s*AGREE") { "AGREE" } else { "REQUEST_CHANGES" }
