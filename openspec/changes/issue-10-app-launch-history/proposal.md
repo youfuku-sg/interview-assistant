@@ -22,7 +22,7 @@ Per `openspec/specs/personal-fork-ux/spec.md`, this fork has no license activati
 
 ## Impact
 
-- **Backend**: new migration file under `src-tauri/src/db/migrations/`, registered in `src-tauri/src/db/main.rs`; new Tauri command (e.g. in `src-tauri/src/api.rs` or a new small module) registered in `src-tauri/src/lib.rs`'s `invoke_handler`.
+- **Backend**: new migration file under `src-tauri/src/db/migrations/`, registered in `src-tauri/src/db/main.rs`; new Tauri command in a small app-launch module (or next to `get_app_version` in `src-tauri/src/lib.rs`) registered in `src-tauri/src/lib.rs`'s `invoke_handler`.
 - **Frontend**: new Settings section component under `src/pages/settings/components/`, wired into `src/pages/settings/index.tsx`.
 - **Data**: adds a new local-only table; no data leaves the device and no existing table schema changes.
 - **No changes** to license/activation code, provider settings, or existing chat/system-prompt tables.
