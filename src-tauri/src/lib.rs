@@ -1,6 +1,7 @@
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 mod activate;
 mod api;
+mod app_launch;
 mod capture;
 mod db;
 mod shortcuts;
@@ -114,6 +115,7 @@ pub fn run() {
             speaker::get_audio_sample_rate,
             speaker::get_input_devices,
             speaker::get_output_devices,
+            app_launch::get_app_launch_history,
         ])
         .setup(|app| {
             // Setup main window positioning
@@ -121,6 +123,10 @@ pub fn run() {
             #[cfg(target_os = "macos")]
             init(app.app_handle());
             let app_handle = app.handle();
+
+            // Record this app launch before any window can invoke commands.
+            tauri::async_runtime::block_on(app_launch::record_launch(app_handle))?;
+
             if app_handle.get_webview_window("dashboard").is_none() {
                 if let Err(e) = window::create_dashboard_window(&app_handle) {
                     eprintln!("Failed to pre-create dashboard window on startup: {}", e);
