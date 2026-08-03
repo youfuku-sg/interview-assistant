@@ -160,6 +160,19 @@ jobs:
         run: |
           $ErrorActionPreference = "Continue"
           chcp 65001 | Out-Null
+
+          # Reasoning models (e.g. qwen via Aider) can think out loud and
+          # mention both "VERDICT: AGREE" and "VERDICT: REQUEST_CHANGES"
+          # while weighing what to answer, before settling on one at the
+          # very end. A plain substring match would pick up whichever
+          # phrase happens to appear first, not the model's actual final
+          # answer. Take the LAST match in the text instead.
+          function Get-Verdict($text) {
+            $verdictMatches = [regex]::Matches($text, "VERDICT:\s*(AGREE|REQUEST_CHANGES)")
+            if ($verdictMatches.Count -eq 0) { return "REQUEST_CHANGES" }
+            return $verdictMatches[$verdictMatches.Count - 1].Groups[1].Value
+          }
+
           $maxRounds = 3
           $changeDir = "openspec/changes/$env:CHANGE_NAME"
           $reviewDir = "$env:RUNNER_TEMP\ai-review"
@@ -200,7 +213,7 @@ jobs:
             $claudeOutput = (Get-Content -Raw "$reviewDir\claude-r$round.txt" | claude -p --dangerously-skip-permissions | Out-String)
             Set-Content -Path "$reviewDir\claude-r$round-output.md" -Value $claudeOutput -Encoding utf8
             Write-Host $claudeOutput
-            $claudeVerdict = if ($claudeOutput -match "VERDICT:\s*AGREE") { "AGREE" } else { "REQUEST_CHANGES" }
+            $claudeVerdict = Get-Verdict $claudeOutput
             $lastNote = $claudeOutput
 
             $claudeChanged = [bool](git status --porcelain -- $changeDir)
@@ -237,7 +250,7 @@ jobs:
             Get-Content -Raw "$reviewDir\codex-r$round.txt" | codex exec -s workspace-write -o "$reviewDir\codex-r$round-output.md" -
             $codexOutput = Get-Content -Raw -Encoding utf8 "$reviewDir\codex-r$round-output.md"
             Write-Host $codexOutput
-            $codexVerdict = if ($codexOutput -match "VERDICT:\s*AGREE") { "AGREE" } else { "REQUEST_CHANGES" }
+            $codexVerdict = Get-Verdict $codexOutput
             $lastNote = $codexOutput
 
             $codexChanged = [bool](git status --porcelain -- $changeDir)
@@ -279,7 +292,7 @@ jobs:
             }
             Set-Content -Path "$reviewDir\qwen-r$round-output.md" -Value $qwenOutput -Encoding utf8
             Write-Host $qwenOutput
-            $qwenVerdict = if ($qwenOutput -match "VERDICT:\s*AGREE") { "AGREE" } else { "REQUEST_CHANGES" }
+            $qwenVerdict = Get-Verdict $qwenOutput
             $lastNote = $qwenOutput
 
             $qwenChanged = [bool](git status --porcelain -- $changeDir)
