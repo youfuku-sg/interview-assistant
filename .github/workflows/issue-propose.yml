@@ -123,11 +123,12 @@ jobs:
   ai-review:
     needs: [create-branch, propose]
     if: needs.propose.outputs.proposed == 'true'
-    # Step 4.4 of the Issue駆動開発フロー: have every available AI (currently
-    # Claude Code and Codex) discuss the proposal and loop -- present, argue,
-    # revise, re-present -- until both agree, up to a bounded number of
-    # rounds (§7 未決事項: no cap was decided yet, so this uses a
-    # conservative default of 3 pending a real decision).
+    # Step 4.4 of the Issue駆動開発フロー: have every available AI (Claude
+    # Code, Codex, and the local LLM via Aider/LM Studio) discuss the
+    # proposal and loop -- present, argue, revise, re-present -- until all
+    # three agree, up to a bounded number of rounds (§7 未決事項: no cap was
+    # decided yet, so this uses a conservative default of 3 pending a real
+    # decision).
     runs-on: [self-hosted, Windows, X64]
     outputs:
       consensus: ${{ steps.loop.outputs.consensus }}
@@ -138,19 +139,32 @@ jobs:
         with:
           ref: ${{ needs.create-branch.outputs.branch }}
 
-      - name: Claude/Codex review loop
+      - name: Ensure Aider (Python 3.12) is available for the local LLM reviewer
+        shell: powershell
+        run: |
+          winget install --id Python.Python.3.12 -e --silent --accept-package-agreements --accept-source-agreements
+          py -3.12 -m pip install --upgrade pip setuptools wheel
+          py -3.12 -m pip install aider-chat
+          py -3.12 -m aider --version
+
+      - name: Claude/Codex/qwen review loop
         id: loop
         shell: powershell
         env:
           ISSUE_NUMBER: ${{ github.event.issue.number }}
           CHANGE_NAME: ${{ needs.propose.outputs.change_name }}
+          LM_STUDIO_API_KEY: dummy-api-key
+          LM_STUDIO_API_BASE: http://localhost:1234/v1
+          PYTHONUTF8: "1"
+          PYTHONIOENCODING: utf-8
         run: |
+          chcp 65001 | Out-Null
           $maxRounds = 3
           $changeDir = "openspec/changes/$env:CHANGE_NAME"
           $reviewDir = "$env:RUNNER_TEMP\ai-review"
           New-Item -ItemType Directory -Force -Path $reviewDir | Out-Null
 
-          $lastCodexNote = ""
+          $lastNote = ""
           $consensus = $false
           $roundsUsed = 0
 
@@ -159,11 +173,12 @@ jobs:
             Write-Host "=== AI review round $round ==="
 
             # --- Claude's turn ---
-            $claudeContext = if ($lastCodexNote) { "Codex's feedback from the previous round:`n$lastCodexNote`n" } else { "This is the first round; no prior feedback yet." }
+            $claudeContext = if ($lastNote) { "The previous reviewer's feedback:`n$lastNote`n" } else { "This is the first round; no prior feedback yet." }
             @"
-          You are one of two AI reviewers (the other is Codex) discussing the
-          OpenSpec proposal at $changeDir for Issue #$env:ISSUE_NUMBER before
-          implementation begins.
+          You are one of three AI reviewers (the others are Codex and a
+          local LLM running via Aider) discussing the OpenSpec proposal at
+          $changeDir for Issue #$env:ISSUE_NUMBER before implementation
+          begins.
 
           $claudeContext
 
@@ -185,6 +200,7 @@ jobs:
             Set-Content -Path "$reviewDir\claude-r$round-output.md" -Value $claudeOutput -Encoding utf8
             Write-Host $claudeOutput
             $claudeVerdict = if ($claudeOutput -match "VERDICT:\s*AGREE") { "AGREE" } else { "REQUEST_CHANGES" }
+            $lastNote = $claudeOutput
 
             $claudeChanged = [bool](git status --porcelain -- $changeDir)
             if ($claudeChanged) {
@@ -194,15 +210,16 @@ jobs:
 
             # --- Codex's turn ---
             @"
-          You are one of two AI reviewers (the other is Claude Code)
-          discussing the OpenSpec proposal at $changeDir for Issue
-          #$env:ISSUE_NUMBER before implementation begins.
+          You are one of three AI reviewers (the others are Claude Code and
+          a local LLM running via Aider) discussing the OpenSpec proposal
+          at $changeDir for Issue #$env:ISSUE_NUMBER before implementation
+          begins.
 
-          Claude's feedback this round (it may have just edited the
+          The previous reviewer's feedback (they may have just edited the
           proposal files -- re-read their current state yourself, don't
           rely on this text alone):
 
-          $claudeOutput
+          $lastNote
 
           Cross-reference openwiki/ and openspec/specs/ for the current
           implementation. If you find real gaps, inconsistencies, or
@@ -220,7 +237,7 @@ jobs:
             $codexOutput = Get-Content -Raw "$reviewDir\codex-r$round-output.md"
             Write-Host $codexOutput
             $codexVerdict = if ($codexOutput -match "VERDICT:\s*AGREE") { "AGREE" } else { "REQUEST_CHANGES" }
-            $lastCodexNote = $codexOutput
+            $lastNote = $codexOutput
 
             $codexChanged = [bool](git status --porcelain -- $changeDir)
             if ($codexChanged) {
@@ -228,7 +245,43 @@ jobs:
               git commit -m "AI review round $round (Codex): revise proposal for issue #$env:ISSUE_NUMBER" | Out-Null
             }
 
-            if ($claudeVerdict -eq "AGREE" -and $codexVerdict -eq "AGREE" -and -not $claudeChanged -and -not $codexChanged) {
+            # --- Local LLM (qwen via Aider)'s turn ---
+            @"
+          You are one of three AI reviewers (the others are Claude Code and
+          Codex) discussing the OpenSpec proposal at $changeDir for Issue
+          #$env:ISSUE_NUMBER before implementation begins.
+
+          The previous reviewer's feedback (they may have just edited the
+          proposal files -- re-read their current state yourself, don't
+          rely on this text alone):
+
+          $lastNote
+
+          Cross-reference openwiki/ and openspec/specs/ for the current
+          implementation. If you find real gaps, inconsistencies, or
+          issues, edit the proposal files directly to fix them. If you have
+          nothing to change, do not edit anything.
+
+          End your response with exactly one line, verbatim:
+          "VERDICT: AGREE" if the proposal as it now stands is ready to move
+          to human review, or "VERDICT: REQUEST_CHANGES" (with your
+          reasoning above it) if you believe further changes are still
+          needed.
+          "@ | Set-Content -Path "$reviewDir\qwen-r$round.txt" -Encoding utf8
+
+            py -3.12 -m aider --model lm_studio/qwen3.6-35b-a3b-mtp --message-file "$reviewDir\qwen-r$round.txt" --yes --no-auto-commits --no-stream *> "$reviewDir\qwen-r$round-output.md"
+            $qwenOutput = Get-Content -Raw "$reviewDir\qwen-r$round-output.md"
+            Write-Host $qwenOutput
+            $qwenVerdict = if ($qwenOutput -match "VERDICT:\s*AGREE") { "AGREE" } else { "REQUEST_CHANGES" }
+            $lastNote = $qwenOutput
+
+            $qwenChanged = [bool](git status --porcelain -- $changeDir)
+            if ($qwenChanged) {
+              git add -- $changeDir
+              git commit -m "AI review round $round (qwen/Aider): revise proposal for issue #$env:ISSUE_NUMBER" | Out-Null
+            }
+
+            if ($claudeVerdict -eq "AGREE" -and $codexVerdict -eq "AGREE" -and $qwenVerdict -eq "AGREE" -and -not $claudeChanged -and -not $codexChanged -and -not $qwenChanged) {
               Write-Host "Consensus reached after round $round."
               $consensus = $true
               break
@@ -263,9 +316,9 @@ jobs:
             if (!proposed) {
               body = `Branch \`${branch}\` was created, but a proposal could not be drafted automatically — it may need more detail. Check the workflow run logs for details.`;
             } else if (consensus) {
-              body = `OpenSpec proposal on \`${branch}\` drafted and reviewed by Claude Code and Codex (consensus reached after ${rounds} round(s)).\n\nCompare: https://github.com/${context.repo.owner}/${context.repo.repo}/compare/main...${branch}\n\nAwaiting human review — nothing has been implemented yet.`;
+              body = `OpenSpec proposal on \`${branch}\` drafted and reviewed by Claude Code, Codex, and the local LLM (qwen via Aider) (consensus reached after ${rounds} round(s)).\n\nCompare: https://github.com/${context.repo.owner}/${context.repo.repo}/compare/main...${branch}\n\nAwaiting human review — nothing has been implemented yet.`;
             } else {
-              body = `OpenSpec proposal on \`${branch}\` drafted, but Claude Code and Codex did not reach consensus after ${rounds} round(s) of review.\n\nCompare: https://github.com/${context.repo.owner}/${context.repo.repo}/compare/main...${branch}\n\nPlease review manually — the two AIs disagreed on something. Check the workflow run logs for each round's reasoning.`;
+              body = `OpenSpec proposal on \`${branch}\` drafted, but the three AI reviewers (Claude Code, Codex, and the local LLM via Aider) did not reach consensus after ${rounds} round(s) of review.\n\nCompare: https://github.com/${context.repo.owner}/${context.repo.repo}/compare/main...${branch}\n\nPlease review manually — check the workflow run logs for each round's reasoning.`;
             }
 
             await github.rest.issues.createComment({
