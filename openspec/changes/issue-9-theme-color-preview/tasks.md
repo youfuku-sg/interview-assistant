@@ -1,7 +1,7 @@
 ## 1. Theme context preview state
 
 - [ ] 1.1 Add `previewTheme: Theme | null` state and a `previewTheme(theme: Theme | null): void` setter to `ThemeProviderContext` in `src/contexts/theme.context.tsx`.
-- [ ] 1.2 Update the `applyTheme`/`updateTheme` effect to derive the effective displayed theme as `previewTheme ?? theme` instead of `theme` alone, so a preview overrides the persisted theme without changing it.
+- [ ] 1.2 Update the `applyTheme`/`updateTheme` effect to derive the effective displayed theme as `previewTheme ?? theme` instead of `theme` alone, so a preview overrides the persisted theme without changing it. This includes changing the effect's dependency array from `[theme]` to `[theme, previewTheme]` (otherwise the effect won't re-run on hover) and applying `previewTheme ?? theme` to the `mediaQuery` "system" change-listener guard/cleanup as well as `applyTheme`/`updateTheme` themselves.
 - [ ] 1.3 Clear `previewTheme` (set to `null`) inside `setTheme` when a real selection commits, so the dropdown closing doesn't flicker through a stale preview.
 - [ ] 1.4 Expose `previewTheme` state and setter through the context value and `useTheme()` return type.
 
