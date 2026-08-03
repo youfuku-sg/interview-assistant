@@ -301,14 +301,6 @@ jobs:
           ref: feature/${{ github.event.issue.number }}
           fetch-depth: 0
 
-      - name: Ensure gh CLI is available
-        shell: powershell
-        run: |
-          if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
-            winget install --id GitHub.cli -e --silent --accept-package-agreements --accept-source-agreements
-          }
-          gh --version
-
       - name: Build confirmation loop (push to build/<N>, wait, fix-and-retry on failure)
         id: confirm
         shell: powershell
@@ -316,6 +308,16 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
         run: |
+          # Uses the GitHub REST API directly via Invoke-RestMethod instead
+          # of the gh CLI: installing gh via winget on this self-hosted
+          # Windows service hung for 6 hours waiting on an MSI/UAC prompt
+          # that a non-interactive service session can never answer.
+          $repo = $env:GITHUB_REPOSITORY
+          $headers = @{
+            Authorization = "Bearer $env:GH_TOKEN"
+            Accept        = "application/vnd.github+json"
+          }
+
           $maxAttempts = 2
           $buildOk = $false
           $runUrl = ""
@@ -329,8 +331,15 @@ jobs:
             $runId = $null
             for ($i = 0; $i -lt 30; $i++) {
               Start-Sleep -Seconds 10
-              $found = gh run list --workflow=build.yml --json databaseId,headSha,status --jq ".[] | select(.headSha==\"$sha\") | .databaseId" | Select-Object -First 1
-              if ($found) { $runId = $found; break }
+              try {
+                $resp = Invoke-RestMethod -Headers $headers -Uri "https://api.github.com/repos/$repo/actions/workflows/build.yml/runs?head_sha=$sha"
+                if ($resp.total_count -gt 0) {
+                  $runId = $resp.workflow_runs[0].id
+                  break
+                }
+              } catch {
+                Write-Host "Polling for run failed (will retry): $_"
+              }
             }
 
             if (-not $runId) {
@@ -338,25 +347,37 @@ jobs:
               continue
             }
 
-            gh run watch $runId --exit-status
-            $watchExit = $LASTEXITCODE
-            $runUrl = gh run view $runId --json url --jq ".url"
-            Write-Host "Build run: $runUrl (exit code $watchExit)"
+            $runUrl = "https://github.com/$repo/actions/runs/$runId"
+            Write-Host "Watching run: $runUrl"
 
-            if ($watchExit -eq 0) {
+            do {
+              Start-Sleep -Seconds 20
+              $run = Invoke-RestMethod -Headers $headers -Uri "https://api.github.com/repos/$repo/actions/runs/$runId"
+              Write-Host "status=$($run.status)"
+            } while ($run.status -ne "completed")
+
+            Write-Host "conclusion=$($run.conclusion)"
+
+            if ($run.conclusion -eq "success") {
               $buildOk = $true
               break
             }
 
             if ($attempt -lt $maxAttempts) {
               $failLog = "$env:RUNNER_TEMP\build-failure-$attempt.log"
-              gh run view $runId --log-failed > $failLog
+              $jobs = Invoke-RestMethod -Headers $headers -Uri "https://api.github.com/repos/$repo/actions/runs/$runId/jobs"
+              $failedJob = $jobs.jobs | Where-Object { $_.conclusion -eq "failure" } | Select-Object -First 1
+              if ($failedJob) {
+                Invoke-RestMethod -Headers $headers -Uri "https://api.github.com/repos/$repo/actions/jobs/$($failedJob.id)/logs" -OutFile $failLog
+              } else {
+                "No failed job found; run conclusion was $($run.conclusion)." | Set-Content -Path $failLog
+              }
 
               $promptPath = "$env:RUNNER_TEMP\claude-buildfix-prompt.txt"
               @"
           The Tauri build for Issue #$env:ISSUE_NUMBER failed (attempt $attempt).
-          You are checked out on feature/$env:ISSUE_NUMBER. The failed build's
-          log (failed steps only) is at: $failLog
+          You are checked out on feature/$env:ISSUE_NUMBER. The failed job's
+          log is at: $failLog
 
           Read that log, find the actual cause in the source it points to,
           and fix it. Keep changes minimal and scoped to the build failure.
