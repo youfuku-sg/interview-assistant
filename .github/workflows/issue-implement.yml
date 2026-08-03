@@ -1,0 +1,321 @@
+name: Issue → Implementation + Code Review
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  implement:
+    # Steps 4.6 of the Issue駆動開発フロー, triggered once a human has
+    # reviewed the AI-drafted OpenSpec proposal and comments "/implement" on
+    # the issue to give the go-ahead.
+    if: github.event.issue.pull_request == null && contains(github.event.comment.body, '/implement')
+    runs-on: [self-hosted, Windows, X64]
+    outputs:
+      implemented: ${{ steps.push.outputs.implemented }}
+      status: ${{ steps.push.outputs.status }}
+    steps:
+      - name: Check out feature branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: feature/${{ github.event.issue.number }}
+
+      - name: Implement the OpenSpec change with Claude Code
+        shell: powershell
+        env:
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          $promptPath = "$env:RUNNER_TEMP\claude-implement-prompt.txt"
+          $statusFilePath = "$env:RUNNER_TEMP\claude-implement-status.txt"
+
+          @"
+          A human reviewed the OpenSpec proposal for Issue #$env:ISSUE_NUMBER
+          and commented "/implement" to approve moving forward.
+
+          You are checked out on feature/$env:ISSUE_NUMBER. Find the OpenSpec
+          change yourself under openspec/changes/issue-$env:ISSUE_NUMBER-*/.
+
+          Follow this repository's documented Issue駆動開発フロー
+          (docs/仕様/Issue駆動開発フロー.md), step 4.6, using the
+          openspec-apply-change skill's process:
+
+          1. `openspec status --change "<name>" --json` to see progress and
+             which artifacts contain the tasks.
+          2. `openspec instructions apply --change "<name>" --json` and read
+             every file listed under contextFiles.
+          3. Implement each pending task, keeping changes minimal and scoped
+             to what the task describes. Mark each task's checkbox
+             (``- [ ]`` -> ``- [x]``) in tasks.md as you complete it.
+          4. Run `npm run typecheck` and `npm run lint`, and if you touched
+             any Rust code under src-tauri/, also run `cargo fmt --check` and
+             `cargo clippy` from src-tauri/. Fix anything they flag before
+             finishing.
+          5. Commit your work (multiple commits are fine; commit
+             `openspec/changes/issue-$env:ISSUE_NUMBER-*/` with `git add -f`
+             since openspec/ is gitignored). Do not push -- that is handled
+             separately.
+          6. Write a single line to $statusFilePath`: "OK" if every task is
+             complete, or "BLOCKED: <reason>" if you got stuck and need human
+             input (commit whatever coherent partial progress you made
+             either way).
+          "@ | Set-Content -Path $promptPath -Encoding utf8
+
+          Get-Content -Raw $promptPath | claude -p --dangerously-skip-permissions
+
+          if (-not (Test-Path $statusFilePath)) {
+            Write-Host "Claude did not write a status file."
+            exit 1
+          }
+          Get-Content $statusFilePath
+
+      - name: Push implementation commit(s)
+        id: push
+        shell: powershell
+        run: |
+          $statusFilePath = "$env:RUNNER_TEMP\claude-implement-status.txt"
+          $status = (Get-Content $statusFilePath -Raw).Trim()
+          Write-Host "Status: $status"
+
+          git push origin "HEAD:refs/heads/feature/${{ github.event.issue.number }}"
+          echo "implemented=true" >> $env:GITHUB_OUTPUT
+          echo "status=$status" >> $env:GITHUB_OUTPUT
+
+  code-review:
+    needs: implement
+    if: needs.implement.outputs.implemented == 'true'
+    # Step 4.7: the same three-AI discuss-until-consensus loop as 4.4, but
+    # reviewing the actual code diff against the OpenSpec tasks/specs instead
+    # of the proposal text.
+    runs-on: [self-hosted, Windows, X64]
+    outputs:
+      consensus: ${{ steps.loop.outputs.consensus }}
+      rounds: ${{ steps.loop.outputs.rounds }}
+    steps:
+      - name: Check out feature branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: feature/${{ github.event.issue.number }}
+
+      - name: Ensure Aider (Python 3.12) is available for the local LLM reviewer
+        shell: powershell
+        run: |
+          winget install --id Python.Python.3.12 -e --silent --accept-package-agreements --accept-source-agreements
+          py -3.12 -m pip install --upgrade pip setuptools wheel
+          py -3.12 -m pip install aider-chat
+          py -3.12 -m aider --version
+
+      - name: Claude/Codex/qwen code review loop
+        id: loop
+        shell: powershell
+        env:
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          LM_STUDIO_API_KEY: dummy-api-key
+          LM_STUDIO_API_BASE: http://localhost:1234/v1
+          PYTHONUTF8: "1"
+          PYTHONIOENCODING: utf-8
+        run: |
+          $ErrorActionPreference = "Continue"
+          chcp 65001 | Out-Null
+
+          # See docs/memo/Issue駆動マルチAIレビュー自動化_実装ノウハウ.md §3.15:
+          # reasoning models can mention both verdict phrases while thinking
+          # out loud, so always take the LAST match, not any substring hit.
+          function Get-Verdict($text) {
+            $verdictMatches = [regex]::Matches($text, "VERDICT:\s*(AGREE|REQUEST_CHANGES)")
+            if ($verdictMatches.Count -eq 0) { return "REQUEST_CHANGES" }
+            return $verdictMatches[$verdictMatches.Count - 1].Groups[1].Value
+          }
+
+          $maxRounds = 3
+          $reviewDir = "$env:RUNNER_TEMP\code-review"
+          New-Item -ItemType Directory -Force -Path $reviewDir | Out-Null
+
+          $lastNote = ""
+          $consensus = $false
+          $roundsUsed = 0
+
+          for ($round = 1; $round -le $maxRounds; $round++) {
+            $roundsUsed = $round
+            Write-Host "=== Code review round $round ==="
+
+            # --- Claude's turn ---
+            $claudeContext = if ($lastNote) { "The previous reviewer's feedback:`n$lastNote`n" } else { "This is the first round; no prior feedback yet." }
+            @"
+          You are one of three AI reviewers (the others are Codex and a
+          local LLM running via Aider) reviewing the IMPLEMENTATION on
+          branch feature/$env:ISSUE_NUMBER for Issue #$env:ISSUE_NUMBER,
+          before it moves on to CI and build verification.
+
+          $claudeContext
+
+          Find the OpenSpec change yourself under
+          openspec/changes/issue-$env:ISSUE_NUMBER-*/ (tasks.md, design.md,
+          specs/*/spec.md). Review the actual code changes yourself (e.g.
+          `git diff main...HEAD`, `git log --oneline main..HEAD`). Check
+          whether the implementation matches the tasks/specs, and look for
+          bugs, inconsistencies, or unnecessary complexity. If you find real
+          issues, fix them directly in the code. If you have nothing to
+          change, do not edit anything.
+
+          End your response with exactly one line, verbatim:
+          "VERDICT: AGREE" if the implementation as it now stands is ready
+          for CI/build verification, or "VERDICT: REQUEST_CHANGES" (with
+          your reasoning above it) if you believe further changes are still
+          needed.
+          "@ | Set-Content -Path "$reviewDir\claude-r$round.txt" -Encoding utf8
+
+            $claudeOutput = (Get-Content -Raw "$reviewDir\claude-r$round.txt" | claude -p --dangerously-skip-permissions | Out-String)
+            Set-Content -Path "$reviewDir\claude-r$round-output.md" -Value $claudeOutput -Encoding utf8
+            Write-Host $claudeOutput
+            $claudeVerdict = Get-Verdict $claudeOutput
+            $lastNote = $claudeOutput
+
+            $claudeChanged = [bool](git status --porcelain)
+            if ($claudeChanged) {
+              git add -A
+              git add -f -- openspec
+              git commit -m "Code review round $round (Claude): revise implementation for issue #$env:ISSUE_NUMBER" | Out-Null
+            }
+
+            # --- Codex's turn ---
+            @"
+          You are one of three AI reviewers (the others are Claude Code and
+          a local LLM running via Aider) reviewing the IMPLEMENTATION on
+          branch feature/$env:ISSUE_NUMBER for Issue #$env:ISSUE_NUMBER,
+          before it moves on to CI and build verification.
+
+          The previous reviewer's feedback (they may have just edited code
+          -- re-check the current diff yourself, don't rely on this text
+          alone):
+
+          $lastNote
+
+          Find the OpenSpec change yourself under
+          openspec/changes/issue-$env:ISSUE_NUMBER-*/. Review the actual
+          code changes (`git diff main...HEAD`). Check whether the
+          implementation matches the tasks/specs, and look for bugs,
+          inconsistencies, or unnecessary complexity. If you find real
+          issues, fix them directly in the code. If you have nothing to
+          change, do not edit anything.
+
+          End your response with exactly one line, verbatim:
+          "VERDICT: AGREE" if the implementation as it now stands is ready
+          for CI/build verification, or "VERDICT: REQUEST_CHANGES" (with
+          your reasoning above it) if you believe further changes are still
+          needed.
+          "@ | Set-Content -Path "$reviewDir\codex-r$round.txt" -Encoding utf8
+
+            Get-Content -Raw "$reviewDir\codex-r$round.txt" | codex exec -s workspace-write -o "$reviewDir\codex-r$round-output.md" -
+            $codexOutput = Get-Content -Raw -Encoding utf8 "$reviewDir\codex-r$round-output.md"
+            Write-Host $codexOutput
+            $codexVerdict = Get-Verdict $codexOutput
+            $lastNote = $codexOutput
+
+            $codexChanged = [bool](git status --porcelain)
+            if ($codexChanged) {
+              git add -A
+              git add -f -- openspec
+              git commit -m "Code review round $round (Codex): revise implementation for issue #$env:ISSUE_NUMBER" | Out-Null
+            }
+
+            # --- Local LLM (qwen via Aider)'s turn ---
+            @"
+          You are one of three AI reviewers (the others are Claude Code and
+          Codex) reviewing the IMPLEMENTATION on branch
+          feature/$env:ISSUE_NUMBER for Issue #$env:ISSUE_NUMBER, before it
+          moves on to CI and build verification.
+
+          The previous reviewer's feedback (they may have just edited code
+          -- re-check the current diff yourself, don't rely on this text
+          alone):
+
+          $lastNote
+
+          Find the OpenSpec change yourself under
+          openspec/changes/issue-$env:ISSUE_NUMBER-*/. Review the actual
+          code changes (`git diff main...HEAD`). Check whether the
+          implementation matches the tasks/specs, and look for bugs,
+          inconsistencies, or unnecessary complexity. If you find real
+          issues, fix them directly in the code. If you have nothing to
+          change, do not edit anything.
+
+          End your response with exactly one line, verbatim:
+          "VERDICT: AGREE" if the implementation as it now stands is ready
+          for CI/build verification, or "VERDICT: REQUEST_CHANGES" (with
+          your reasoning above it) if you believe further changes are still
+          needed.
+          "@ | Set-Content -Path "$reviewDir\qwen-r$round.txt" -Encoding utf8
+
+            $qwenOutput = ""
+            try {
+              $qwenOutput = (py -3.12 -m aider --model lm_studio/qwen3.6-35b-a3b-mtp --message-file "$reviewDir\qwen-r$round.txt" --yes --no-auto-commits --no-stream 2>&1 | Out-String)
+            } catch {
+              Write-Host "qwen/Aider invocation threw an exception this round; treating as no feedback and continuing: $_"
+              $qwenOutput = "(qwen/Aider failed to run this round: $_)"
+            }
+            Set-Content -Path "$reviewDir\qwen-r$round-output.md" -Value $qwenOutput -Encoding utf8
+            Write-Host $qwenOutput
+            $qwenVerdict = Get-Verdict $qwenOutput
+            $lastNote = $qwenOutput
+
+            $qwenChanged = [bool](git status --porcelain)
+            if ($qwenChanged) {
+              git add -A
+              git add -f -- openspec
+              git commit -m "Code review round $round (qwen/Aider): revise implementation for issue #$env:ISSUE_NUMBER" | Out-Null
+            }
+
+            if ($claudeVerdict -eq "AGREE" -and $codexVerdict -eq "AGREE" -and $qwenVerdict -eq "AGREE" -and -not $claudeChanged -and -not $codexChanged -and -not $qwenChanged) {
+              Write-Host "Consensus reached after round $round."
+              $consensus = $true
+              break
+            }
+          }
+
+          git push origin "HEAD:refs/heads/feature/${{ github.event.issue.number }}"
+
+          echo "consensus=$($consensus.ToString().ToLower())" >> $env:GITHUB_OUTPUT
+          echo "rounds=$roundsUsed" >> $env:GITHUB_OUTPUT
+
+  comment:
+    needs: [implement, code-review]
+    if: always() && needs.implement.result != 'skipped'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Comment on the issue
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        env:
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          IMPLEMENTED: ${{ needs.implement.outputs.implemented }}
+          STATUS: ${{ needs.implement.outputs.status }}
+          CONSENSUS: ${{ needs.code-review.outputs.consensus }}
+          ROUNDS: ${{ needs.code-review.outputs.rounds }}
+        with:
+          script: |
+            const branch = `feature/${process.env.ISSUE_NUMBER}`;
+            const implemented = process.env.IMPLEMENTED === 'true';
+            const status = process.env.STATUS || '';
+            const consensus = process.env.CONSENSUS === 'true';
+            const rounds = process.env.ROUNDS;
+
+            let body;
+            if (!implemented) {
+              body = `Implementation step failed to run on \`${branch}\`. Check the workflow run logs for details.`;
+            } else if (status.startsWith('BLOCKED')) {
+              body = `Implementation on \`${branch}\` is blocked: ${status}.\n\nWhatever partial progress was coherent has been committed and pushed. Please advise.`;
+            } else if (consensus) {
+              body = `Implementation on \`${branch}\` complete and reviewed by Claude Code, Codex, and the local LLM (qwen via Aider) (consensus reached after ${rounds} round(s)).\n\nDiff: https://github.com/${context.repo.owner}/${context.repo.repo}/compare/main...${branch}\n\nNext: CI and build verification (not yet automated).`;
+            } else {
+              body = `Implementation on \`${branch}\` complete, but the three AI reviewers did not reach consensus on the code after ${rounds} round(s).\n\nDiff: https://github.com/${context.repo.owner}/${context.repo.repo}/compare/main...${branch}\n\nPlease review manually — check the workflow run logs for each round's reasoning.`;
+            }
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body,
+            });
