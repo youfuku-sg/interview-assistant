@@ -125,7 +125,8 @@ pub fn run() {
             let app_handle = app.handle();
 
             // Record this app launch before any window can invoke commands.
-            tauri::async_runtime::block_on(app_launch::record_launch(app_handle))?;
+            tauri::async_runtime::block_on(app_launch::record_launch(app_handle))
+                .map_err(std::io::Error::other)?;
 
             if app_handle.get_webview_window("dashboard").is_none() {
                 if let Err(e) = window::create_dashboard_window(&app_handle) {
