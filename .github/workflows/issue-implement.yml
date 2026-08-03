@@ -7,6 +7,8 @@ on:
 permissions:
   contents: write
   issues: write
+  pull-requests: write
+  actions: read
 
 jobs:
   implement:
@@ -281,8 +283,129 @@ jobs:
           echo "consensus=$($consensus.ToString().ToLower())" >> $env:GITHUB_OUTPUT
           echo "rounds=$roundsUsed" >> $env:GITHUB_OUTPUT
 
-  comment:
+  build-confirm:
     needs: [implement, code-review]
+    if: needs.code-review.result == 'success'
+    # Step 4.9: push feature/<N> to build/<N> (mirrors it) to trigger the
+    # real Tauri build in build.yml -- kept off feature/* so it doesn't run
+    # on every commit. On failure, Claude looks at the failure and fixes it,
+    # bounded to a couple of attempts.
+    runs-on: [self-hosted, Windows, X64]
+    outputs:
+      build_ok: ${{ steps.confirm.outputs.build_ok }}
+      run_url: ${{ steps.confirm.outputs.run_url }}
+    steps:
+      - name: Check out feature branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: feature/${{ github.event.issue.number }}
+          fetch-depth: 0
+
+      - name: Ensure gh CLI is available
+        shell: powershell
+        run: |
+          if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
+            winget install --id GitHub.cli -e --silent --accept-package-agreements --accept-source-agreements
+          }
+          gh --version
+
+      - name: Build confirmation loop (push to build/<N>, wait, fix-and-retry on failure)
+        id: confirm
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          $maxAttempts = 2
+          $buildOk = $false
+          $runUrl = ""
+
+          for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+            Write-Host "=== Build attempt $attempt ==="
+            git push --force origin "HEAD:refs/heads/build/$env:ISSUE_NUMBER"
+            $sha = (git rev-parse HEAD).Trim()
+            Write-Host "Pushed SHA: $sha"
+
+            $runId = $null
+            for ($i = 0; $i -lt 30; $i++) {
+              Start-Sleep -Seconds 10
+              $found = gh run list --workflow=build.yml --json databaseId,headSha,status --jq ".[] | select(.headSha==\"$sha\") | .databaseId" | Select-Object -First 1
+              if ($found) { $runId = $found; break }
+            }
+
+            if (-not $runId) {
+              Write-Host "No build run appeared for $sha within timeout."
+              continue
+            }
+
+            gh run watch $runId --exit-status
+            $watchExit = $LASTEXITCODE
+            $runUrl = gh run view $runId --json url --jq ".url"
+            Write-Host "Build run: $runUrl (exit code $watchExit)"
+
+            if ($watchExit -eq 0) {
+              $buildOk = $true
+              break
+            }
+
+            if ($attempt -lt $maxAttempts) {
+              $failLog = "$env:RUNNER_TEMP\build-failure-$attempt.log"
+              gh run view $runId --log-failed > $failLog
+
+              $promptPath = "$env:RUNNER_TEMP\claude-buildfix-prompt.txt"
+              @"
+          The Tauri build for Issue #$env:ISSUE_NUMBER failed (attempt $attempt).
+          You are checked out on feature/$env:ISSUE_NUMBER. The failed build's
+          log (failed steps only) is at: $failLog
+
+          Read that log, find the actual cause in the source it points to,
+          and fix it. Keep changes minimal and scoped to the build failure.
+          Commit your fix (do not push -- that is handled separately).
+          "@ | Set-Content -Path $promptPath -Encoding utf8
+
+              Get-Content -Raw $promptPath | claude -p --dangerously-skip-permissions
+            }
+          }
+
+          echo "build_ok=$($buildOk.ToString().ToLower())" >> $env:GITHUB_OUTPUT
+          echo "run_url=$runUrl" >> $env:GITHUB_OUTPUT
+
+          git push origin "HEAD:refs/heads/feature/$env:ISSUE_NUMBER"
+
+  pr:
+    needs: [implement, code-review, build-confirm]
+    if: needs.build-confirm.outputs.build_ok == 'true'
+    # Step 4.10: open the PR that the user will download the build from and
+    # verify (4.11) before approving (4.12). base=main, head=build/<N> (a
+    # mirror of feature/<N>); this PR is not merged automatically.
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Create PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          RUN_URL: ${{ needs.build-confirm.outputs.run_url }}
+        run: |
+          BODY_FILE="$(mktemp)"
+          {
+            echo "Relates to #$ISSUE_NUMBER"
+            echo ""
+            echo "Build succeeded: $RUN_URL (download the installer artifact from that run)."
+            echo ""
+            echo "Please download and verify the build (step 4.11). Approve this PR once verified -- this PR is not auto-merged; the release flow (docs/仕様/ブランチ・リリース戦略.md) picks up from feature/$ISSUE_NUMBER afterward."
+          } > "$BODY_FILE"
+
+          gh pr create \
+            --base main \
+            --head "build/$ISSUE_NUMBER" \
+            --title "Issue #$ISSUE_NUMBER: build ready for verification" \
+            --body-file "$BODY_FILE"
+
+  comment:
+    needs: [implement, code-review, build-confirm, pr]
     if: always() && needs.implement.result != 'skipped'
     runs-on: ubuntu-latest
     steps:
@@ -294,6 +417,9 @@ jobs:
           STATUS: ${{ needs.implement.outputs.status }}
           CONSENSUS: ${{ needs.code-review.outputs.consensus }}
           ROUNDS: ${{ needs.code-review.outputs.rounds }}
+          BUILD_OK: ${{ needs.build-confirm.result == 'success' && needs.build-confirm.outputs.build_ok }}
+          RUN_URL: ${{ needs.build-confirm.outputs.run_url }}
+          PR_CREATED: ${{ needs.pr.result == 'success' }}
         with:
           script: |
             const branch = `feature/${process.env.ISSUE_NUMBER}`;
@@ -301,16 +427,23 @@ jobs:
             const status = process.env.STATUS || '';
             const consensus = process.env.CONSENSUS === 'true';
             const rounds = process.env.ROUNDS;
+            const buildOk = process.env.BUILD_OK === 'true';
+            const runUrl = process.env.RUN_URL;
+            const prCreated = process.env.PR_CREATED === 'true';
 
             let body;
             if (!implemented) {
               body = `Implementation step failed to run on \`${branch}\`. Check the workflow run logs for details.`;
             } else if (status.startsWith('BLOCKED')) {
               body = `Implementation on \`${branch}\` is blocked: ${status}.\n\nWhatever partial progress was coherent has been committed and pushed. Please advise.`;
-            } else if (consensus) {
-              body = `Implementation on \`${branch}\` complete and reviewed by Claude Code, Codex, and the local LLM (qwen via Aider) (consensus reached after ${rounds} round(s)).\n\nDiff: https://github.com/${context.repo.owner}/${context.repo.repo}/compare/main...${branch}\n\nNext: CI and build verification (not yet automated).`;
-            } else {
+            } else if (!consensus) {
               body = `Implementation on \`${branch}\` complete, but the three AI reviewers did not reach consensus on the code after ${rounds} round(s).\n\nDiff: https://github.com/${context.repo.owner}/${context.repo.repo}/compare/main...${branch}\n\nPlease review manually — check the workflow run logs for each round's reasoning.`;
+            } else if (prCreated) {
+              body = `Implementation on \`${branch}\` complete and reviewed (consensus after ${rounds} round(s)). Build succeeded: ${runUrl}\n\nA PR is open for you to download the build and verify (step 4.11).`;
+            } else if (buildOk) {
+              body = `Implementation on \`${branch}\` complete and reviewed (consensus after ${rounds} round(s)). Build succeeded: ${runUrl}\n\nBut PR creation failed — check the workflow run logs.`;
+            } else {
+              body = `Implementation on \`${branch}\` complete and reviewed (consensus after ${rounds} round(s)), but the build did not succeed after retries. Check the build.yml run logs and \`build/${process.env.ISSUE_NUMBER}\` for details.`;
             }
 
             await github.rest.issues.createComment({

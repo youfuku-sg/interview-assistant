@@ -1,0 +1,45 @@
+name: Build (confirmation)
+
+# Step 4.9 of the Issue駆動開発フロー: a full Tauri build, kept separate from
+# the lightweight typecheck/lint/clippy checks in ci.yml so that a build/*
+# push (a deliberate "confirm this compiles into a real app" signal) doesn't
+# run on every feature/* commit. No release/tag is created here -- just an
+# installer artifact for manual download and verification (4.10/4.11).
+
+on:
+  push:
+    branches:
+      - "build/**"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: lts/*
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install frontend deps
+        run: npm ci
+
+      - name: Build Tauri app (unsigned, no release)
+        run: npm run tauri build
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: installer-${{ github.sha }}
+          path: |
+            src-tauri/target/release/bundle/**/*.msi
+            src-tauri/target/release/bundle/**/*.exe
+          if-no-files-found: error
