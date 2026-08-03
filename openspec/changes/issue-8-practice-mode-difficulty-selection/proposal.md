@@ -23,7 +23,7 @@ Issue #8: 面接練習モードを使う際、初級/中級/上級のように�
 
 - `src/pages/practice/`（新規）: 難易度選択 UI と質問一覧表示コンポーネントを追加。
 - `src/pages/practice/components/`（新規）: 難易度セレクタ、質問カード等のサブコンポーネント。
-- `src/lib/functions/`: 難易度パラメータ付きの質問生成プロンプトを組み立てる関数を追加（既存の `ai-response.function.ts` のリクエスト機構を再利用）。
+- `src/lib/functions/`: 難易度パラメータ付きの質問生成プロンプトを組み立てる関数を追加し、`ai-response.function.ts` にグローバル回答言語・回答長設定によるプロンプト拡張を無効化する後方互換な opt-out 引数を追加（既定値は従来挙動を維持）。
 - `src-tauri/src/db/migrations/`: 練習質問セット保存用の新規マイグレーションファイルを追加し、`src-tauri/src/db/main.rs` の `migrations()` に登録する。
 - `src/routes/index.tsx`（またはルーティング相当箇所）: 「面接練習」ページへの導線を追加。
 - 新規 AI 呼び出しが発生するため、設定済みプロバイダーへのリクエスト回数・コストが増加する。
