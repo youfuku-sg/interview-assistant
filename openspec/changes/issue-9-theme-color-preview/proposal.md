@@ -5,7 +5,7 @@ Issue #9: in Settings, switching the theme (`ライト`/`ダーク`/`システ�
 ## What Changes
 
 - Add a preview interaction to the theme dropdown in `Theme.tsx`: hovering/focusing a theme option (`light`/`dark`/`system`) temporarily previews that appearance without persisting it or firing `setTheme`.
-- Add preview state/handlers to `ThemeProviderContext` (`src/contexts/theme.context.tsx`): a `previewTheme(theme: Theme | null)` action that applies the `light`/`dark` class transiently, and reverts to the actual persisted `theme` when preview ends (mouse leave / blur / menu close) or when a real selection commits.
+- Add internal preview state and a public handler to `ThemeProviderContext` (`src/contexts/theme.context.tsx`): a `previewTheme(theme: Theme | null)` action that applies the `light`/`dark` class transiently, and reverts to the actual persisted `theme` when preview ends (mouse leave / blur / menu close) or when a real selection commits.
 - Actual selection (click/Enter) still calls the existing `setTheme`, persisting to `localStorage` as today — no change to persisted behavior.
 - No new color palettes/themes are introduced; this only adds a preview step to the existing light/dark/system choice already in the UI.
 
