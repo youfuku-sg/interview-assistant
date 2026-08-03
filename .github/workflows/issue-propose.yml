@@ -204,7 +204,7 @@ jobs:
 
             $claudeChanged = [bool](git status --porcelain -- $changeDir)
             if ($claudeChanged) {
-              git add -- $changeDir
+              git add -f -- $changeDir
               git commit -m "AI review round $round (Claude): revise proposal for issue #$env:ISSUE_NUMBER" | Out-Null
             }
 
@@ -234,14 +234,14 @@ jobs:
           "@ | Set-Content -Path "$reviewDir\codex-r$round.txt" -Encoding utf8
 
             Get-Content -Raw "$reviewDir\codex-r$round.txt" | codex exec -s workspace-write -o "$reviewDir\codex-r$round-output.md" -
-            $codexOutput = Get-Content -Raw "$reviewDir\codex-r$round-output.md"
+            $codexOutput = Get-Content -Raw -Encoding utf8 "$reviewDir\codex-r$round-output.md"
             Write-Host $codexOutput
             $codexVerdict = if ($codexOutput -match "VERDICT:\s*AGREE") { "AGREE" } else { "REQUEST_CHANGES" }
             $lastNote = $codexOutput
 
             $codexChanged = [bool](git status --porcelain -- $changeDir)
             if ($codexChanged) {
-              git add -- $changeDir
+              git add -f -- $changeDir
               git commit -m "AI review round $round (Codex): revise proposal for issue #$env:ISSUE_NUMBER" | Out-Null
             }
 
@@ -270,14 +270,14 @@ jobs:
           "@ | Set-Content -Path "$reviewDir\qwen-r$round.txt" -Encoding utf8
 
             py -3.12 -m aider --model lm_studio/qwen3.6-35b-a3b-mtp --message-file "$reviewDir\qwen-r$round.txt" --yes --no-auto-commits --no-stream *> "$reviewDir\qwen-r$round-output.md"
-            $qwenOutput = Get-Content -Raw "$reviewDir\qwen-r$round-output.md"
+            $qwenOutput = Get-Content -Raw -Encoding utf8 "$reviewDir\qwen-r$round-output.md"
             Write-Host $qwenOutput
             $qwenVerdict = if ($qwenOutput -match "VERDICT:\s*AGREE") { "AGREE" } else { "REQUEST_CHANGES" }
             $lastNote = $qwenOutput
 
             $qwenChanged = [bool](git status --porcelain -- $changeDir)
             if ($qwenChanged) {
-              git add -- $changeDir
+              git add -f -- $changeDir
               git commit -m "AI review round $round (qwen/Aider): revise proposal for issue #$env:ISSUE_NUMBER" | Out-Null
             }
 
