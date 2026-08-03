@@ -5,9 +5,9 @@
 
 ## 2. バックエンド（起動記録・取得コマンド）
 
-- [ ] 2.0 `src-tauri/Cargo.toml` に `sqlx`（`sqlite`, `runtime-tokio` 等必要な feature）を直接依存として追加する（`tauri-plugin-sql` 経由の間接依存としてバージョンは既に解決済み・`Cargo.lock` 記載の 0.8.6 系を使う）。`tauri-plugin-sql` は内部プールを Rust 側コードに公開していないため、`pluely.db` に対して別途 `sqlx::SqlitePool` を開く。プラグインと同じ `app.path().app_config_dir()?.join("pluely.db")` を `SqliteConnectOptions` に渡し、同じファイルを指すようにする（`app_data_dir()` ではない）
-- [ ] 2.1 `src-tauri/src/lib.rs` の `run()` 内 `setup()` クロージャで、2.0 で用意した `sqlx::SqlitePool` を使い、アプリ起動時に `app_launches` へ1行 INSERT する処理を追加する（ウィンドウ生成処理より前後どちらでもよいが、1起動につき1回のみ実行されることを確認する）。`src-tauri/tauri.conf.json` の既存 `plugins.sql.preload` を維持し、プリロードによる DB ロードとマイグレーション適用が `setup()` より先に完了することも確認する
-- [ ] 2.2 直近の起動履歴を新しい順で返す Tauri コマンド（例: `get_app_launch_history`、`limit: Option<i64>` 省略時は10件）を実装する
+- [ ] 2.0 `src-tauri/Cargo.toml` に `sqlx`（`sqlite` feature のみ。`tauri-plugin-sql` 経由の間接依存としてバージョンは既に解決済み・`Cargo.lock` 記載の 0.8.6 系を使う）を直接依存として追加する。**（本レビューラウンドで修正）** 独自に `sqlx::SqlitePool` を新規に開く必要はない。`tauri-plugin-sql`（`Cargo.lock` で `2.3.0` 固定、`sql-v2.3.0` タグのソースで確認済み）は起動時にプリロード・マイグレーション済みの接続プールを `pub struct DbInstances(pub tokio::sync::RwLock<HashMap<String, DbPool>>)` として `app.manage()` 済みであり、`pub enum DbPool { Sqlite(sqlx::SqlitePool), .. }` はクレートルートで再エクスポートされているため、アプリ側コードから `app.state::<tauri_plugin_sql::DbInstances>()` 経由でこの既存プールをそのまま再利用できる。よって `app_config_dir()`/`app_data_dir()` のパス解決をアプリ側で再現する必要も、2本目の接続を開く必要もない
+- [ ] 2.1 `src-tauri/src/lib.rs` の `run()` 内 `setup()` クロージャで、`tauri::async_runtime::spawn` 内から `app.state::<tauri_plugin_sql::DbInstances>()` を `.0.read().await`（`tokio::sync::RwLock` のため非同期コンテキストが必要）し、キー `"sqlite:pluely.db"` に対応する `DbPool::Sqlite(pool)` を取得して `app_launches` へ1行 INSERT する処理を追加する（ウィンドウ生成処理より前後どちらでもよいが、1起動につき1回のみ実行されることを確認する）。`src-tauri/tauri.conf.json` の既存 `plugins.sql.preload` と、`.plugin(tauri_plugin_sql::Builder::default()...)` の登録が `.setup()` より前である現状の順序を維持し、プリロードによる DB ロードとマイグレーション適用が `setup()` より先に完了することも確認する
+- [ ] 2.2 直近の起動履歴を新しい順で返す Tauri コマンド（例: `get_app_launch_history`、`limit: Option<i64>` 省略時は10件）を実装する。呼び出しごとに 2.1 と同じ方法（`app.state::<tauri_plugin_sql::DbInstances>()` 経由）でプールを取得し、新たな接続は開かない
 - [ ] 2.3 新しいコマンドを `lib.rs` の `invoke_handler!` に登録する
 
 ## 3. フロントエンド（設定画面）
