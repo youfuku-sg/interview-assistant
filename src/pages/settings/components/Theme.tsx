@@ -9,7 +9,8 @@ import {
 } from "@/components";
 
 export const Theme = () => {
-  const { theme, transparency, setTheme, onSetTransparency } = useTheme();
+  const { theme, transparency, setTheme, previewTheme, onSetTransparency } =
+    useTheme();
 
   return (
     <div id="theme" className="relative space-y-3">
@@ -49,7 +50,11 @@ export const Theme = () => {
               </p>
             </div>
           </div>
-          <DropdownMenu>
+          <DropdownMenu
+            onOpenChange={(open) => {
+              if (!open) previewTheme(null);
+            }}
+          >
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="icon">
                 {theme === "system" ? (
@@ -63,13 +68,31 @@ export const Theme = () => {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => setTheme("light")}>
+              <DropdownMenuItem
+                onClick={() => setTheme("light")}
+                onMouseEnter={() => previewTheme("light")}
+                onFocus={() => previewTheme("light")}
+                onMouseLeave={() => previewTheme(null)}
+                onBlur={() => previewTheme(null)}
+              >
                 ライト
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setTheme("dark")}>
+              <DropdownMenuItem
+                onClick={() => setTheme("dark")}
+                onMouseEnter={() => previewTheme("dark")}
+                onFocus={() => previewTheme("dark")}
+                onMouseLeave={() => previewTheme(null)}
+                onBlur={() => previewTheme(null)}
+              >
                 ダーク
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setTheme("system")}>
+              <DropdownMenuItem
+                onClick={() => setTheme("system")}
+                onMouseEnter={() => previewTheme("system")}
+                onFocus={() => previewTheme("system")}
+                onMouseLeave={() => previewTheme(null)}
+                onBlur={() => previewTheme(null)}
+              >
                 システム
               </DropdownMenuItem>
             </DropdownMenuContent>

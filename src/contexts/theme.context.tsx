@@ -12,6 +12,7 @@ type ThemeProviderProps = {
 type ThemeProviderState = {
   theme: Theme;
   setTheme: (theme: Theme) => void;
+  previewTheme: (theme: Theme | null) => void;
   transparency: number;
   onSetTransparency: (transparency: number) => void;
 };
@@ -19,6 +20,7 @@ type ThemeProviderState = {
 const initialState: ThemeProviderState = {
   theme: "system",
   setTheme: () => null,
+  previewTheme: () => null,
   transparency: 10,
   onSetTransparency: () => null,
 };
@@ -34,6 +36,7 @@ export function ThemeProvider({
   const [theme, setTheme] = useState<Theme>(
     () => (localStorage.getItem(storageKey) as Theme) || defaultTheme
   );
+  const [previewedTheme, setPreviewedTheme] = useState<Theme | null>(null);
   const [transparency, setTransparency] = useState<number>(() => {
     const stored = localStorage.getItem(STORAGE_KEYS.TRANSPARENCY);
     return stored ? parseInt(stored, 10) : 10;
@@ -58,6 +61,7 @@ export function ThemeProvider({
 
   useEffect(() => {
     const root = window.document.documentElement;
+    const effectiveTheme = previewedTheme ?? theme;
 
     const applyTheme = (currentTheme: Theme) => {
       root.classList.remove("light", "dark");
@@ -71,23 +75,23 @@ export function ThemeProvider({
     };
 
     const updateTheme = () => {
-      if (theme === "system") {
+      if (effectiveTheme === "system") {
         applyTheme("system");
       }
     };
 
-    applyTheme(theme);
+    applyTheme(effectiveTheme);
 
-    if (theme === "system") {
+    if (effectiveTheme === "system") {
       mediaQuery.addEventListener("change", updateTheme);
     }
 
     return () => {
-      if (theme === "system") {
+      if (effectiveTheme === "system") {
         mediaQuery.removeEventListener("change", updateTheme);
       }
     };
-  }, [theme]);
+  }, [theme, previewedTheme]);
 
   // Apply transparency globally
   useEffect(() => {
@@ -115,6 +119,10 @@ export function ThemeProvider({
     setTheme: (newTheme: Theme) => {
       localStorage.setItem(storageKey, newTheme);
       setTheme(newTheme);
+      setPreviewedTheme(null);
+    },
+    previewTheme: (newTheme: Theme | null) => {
+      setPreviewedTheme(newTheme);
     },
     isSystemThemeDark,
     transparency,
