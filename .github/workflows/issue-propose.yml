@@ -269,8 +269,8 @@ jobs:
           needed.
           "@ | Set-Content -Path "$reviewDir\qwen-r$round.txt" -Encoding utf8
 
-            py -3.12 -m aider --model lm_studio/qwen3.6-35b-a3b-mtp --message-file "$reviewDir\qwen-r$round.txt" --yes --no-auto-commits --no-stream *> "$reviewDir\qwen-r$round-output.md"
-            $qwenOutput = Get-Content -Raw -Encoding utf8 "$reviewDir\qwen-r$round-output.md"
+            $qwenOutput = (py -3.12 -m aider --model lm_studio/qwen3.6-35b-a3b-mtp --message-file "$reviewDir\qwen-r$round.txt" --yes --no-auto-commits --no-stream 2>&1 | Out-String)
+            Set-Content -Path "$reviewDir\qwen-r$round-output.md" -Value $qwenOutput -Encoding utf8
             Write-Host $qwenOutput
             $qwenVerdict = if ($qwenOutput -match "VERDICT:\s*AGREE") { "AGREE" } else { "REQUEST_CHANGES" }
             $lastNote = $qwenOutput
