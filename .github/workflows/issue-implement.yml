@@ -324,6 +324,14 @@ jobs:
 
           for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
             Write-Host "=== Build attempt $attempt ==="
+
+            # A force-push that only re-points build/<N> to a commit SHA
+            # GitHub has already seen (e.g. the same tip as feature/<N>)
+            # carries an empty "commits" list and does NOT fire push-based
+            # Actions -- verified empirically. An --allow-empty commit
+            # guarantees a genuinely new SHA each attempt so the push event
+            # actually fires.
+            git commit --allow-empty -m "chore: trigger build for issue #$env:ISSUE_NUMBER (attempt $attempt)" | Out-Null
             git push --force origin "HEAD:refs/heads/build/$env:ISSUE_NUMBER"
             $sha = (git rev-parse HEAD).Trim()
             Write-Host "Pushed SHA: $sha"
