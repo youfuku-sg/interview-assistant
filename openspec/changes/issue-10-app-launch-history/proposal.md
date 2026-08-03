@@ -8,7 +8,7 @@ Per `openspec/specs/personal-fork-ux/spec.md`, this fork has no license activati
 
 - Add a new `app_launches` SQLite table (new migration) that records one row per app process start, with a timestamp.
 - Record a launch entry once during Tauri backend startup (in `src-tauri/src/lib.rs` `setup`), independent of window show/hide or dashboard open/close events.
-- Add a new Tauri command to fetch the most recent launch history rows (default/most recent 10, newest first).
+- Add a new parameterless Tauri command to fetch the 10 most recent launch history rows, newest first.
 - Add a new read-only "起動履歴" (Launch History) section at the bottom of the Settings page (`src/pages/settings/index.tsx`) listing the most recent 10 launch timestamps (formatted for local display), fetched via the new command.
 - No deletion/editing UI is in scope; this is a read-only history list (existing `DeleteChats` pattern is for chat history only and is not extended to cover this new table).
 
