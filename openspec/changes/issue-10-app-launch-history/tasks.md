@@ -5,7 +5,8 @@
 
 ## 2. バックエンド（起動記録・取得コマンド）
 
-- [ ] 2.1 `src-tauri/src/lib.rs` の `run()` 内 `setup()` クロージャで、アプリ起動時に `app_launches` へ1行 INSERT する処理を追加する（ウィンドウ生成処理より前後どちらでもよいが、1起動につき1回のみ実行されることを確認する）
+- [ ] 2.0 `src-tauri/Cargo.toml` に `sqlx`（`sqlite`, `runtime-tokio` 等必要な feature）を直接依存として追加する（`tauri-plugin-sql` 経由の間接依存としてバージョンは既に解決済み・`Cargo.lock` 記載の 0.8.6 系を使う）。`tauri-plugin-sql` は内部プールを Rust 側コードに公開していないため、`pluely.db` に対して別途 `sqlx::SqlitePool` を開く。`sqlite:pluely.db` がプラグインによって解決される実際のパス（`app_data_dir()` 配下）を確認し、同じファイルを指すようにする
+- [ ] 2.1 `src-tauri/src/lib.rs` の `run()` 内 `setup()` クロージャで、2.0 で用意した `sqlx::SqlitePool` を使い、アプリ起動時に `app_launches` へ1行 INSERT する処理を追加する（ウィンドウ生成処理より前後どちらでもよいが、1起動につき1回のみ実行されることを確認する。また `tauri-plugin-sql` のマイグレーション適用（プラグイン登録時）が `setup()` より先に完了していることを確認する）
 - [ ] 2.2 直近の起動履歴を新しい順で返す Tauri コマンド（例: `get_app_launch_history`、`limit: Option<i64>` 省略時は10件）を実装する
 - [ ] 2.3 新しいコマンドを `lib.rs` の `invoke_handler!` に登録する
 
