@@ -21,6 +21,8 @@
 - [ ] 3.1 `docs/仕様/GitHub Actions リリース手順.md` に、インストーラファイル名が新しい `productName` に由来する旨と、新しいファイル名の例を記載する
 - [ ] 3.2 `CLAUDE.md` の「Package/binary name, productName, and identifier are interview-pilot / Interview-Pilot / com.interview-pilot.app」の記述を新しい名称に更新する
 - [ ] 3.3 `docs/仕様/要求仕様書.md` 等、製品名に言及している仕様書があれば該当箇所を更新する(実装時に `grep -rln "Interview-Pilot" docs/` で確認する)
+- [ ] 3.4 `README.md` のタイトル・本文・バッジ・clone 手順を `Interview-Assistant` / `youfuku-sg/interview-assistant` に更新し、`SECURITY.md` の脆弱性報告 URL も現在のリポジトリへ更新する
+- [ ] 3.5 `README.md`、`SECURITY.md`、`CLAUDE.md`、`docs/`、`src/`、`src-tauri/`、`.github/` を対象に旧名称・旧リポジトリ URL の残存を検索する。`CHANGELOG.md` の履歴と自動生成される `openwiki/` は手動置換の対象外とする
 
 ## 4. 検証
 

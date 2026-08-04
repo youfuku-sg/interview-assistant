@@ -3,6 +3,7 @@
 現在の識別子・名称関連の設定(2026-08-04 時点):
 
 - `package.json`: `"name": "interview-pilot"`、`"homepage"` / `"repository.url"` / `"bugs.url"` は fork元 `iamsrikanthnani/pluely` のまま(前回 change のスコープ外だった残存箇所)
+- `README.md` はタイトル・本文・clone 手順・バッジ URL に `Interview-Pilot` / `youfuku-sg/Interview-Pilot` が残り、`SECURITY.md` の脆弱性報告 URL も旧リポジトリ名を参照している。さらに `openspec/specs/project-documentation/spec.md` は README が `Interview-Pilot` を記載することを明示的に要求しているため、同 capability の delta spec が必要
 - `src-tauri/Cargo.toml`: `[package] name = "interview-pilot"`、`[lib] name = "interview_pilot_lib"`、`repository`/`homepage`/`documentation` も `iamsrikanthnani/pluely` のまま
 - `src-tauri/tauri.conf.json`: `"productName": "Interview-Pilot"`、`"identifier": "com.interview-pilot.app"`
 - `src-tauri/tauri.conf.json` の `app.windows[0].title`: `"Interview-Pilot - AIアシスタント"`
@@ -22,10 +23,12 @@
 - `identifier` 変更に伴うリスク(既存インストール環境との互換性)を、前回 change での知見を踏まえて再整理する
 - アプリ内UIに残る可能性のある「Interview-Pilot」表記の置き換え候補を洗い出す
 - 今回のリネームと合わせて対応すべきか判断が必要な残存箇所(`pluely.desktop` リソース名、`pluely.db` の DB ファイル名、`package.json`/`Cargo.toml` の fork元 URL)を明示し、スコープに含めるかどうかの方針を示す
+- README / SECURITY のブランド名とリポジトリ URL を新名称へ更新し、`project-documentation` capability の規範要件も同じ名称へ更新する
 
 **Non-Goals:**
 - アプリアイコン・ロゴなど新規ビジュアルアセットの制作(前回 change から継続して対象外)
 - ライセンス変更(GPL-3.0 のまま)
+- `CHANGELOG.md` の過去リリース記録の書き換え、および GitHub Actions が再生成する `openwiki/` ページの手動編集
 - macOS / Linux 向けの `identifier` 挙動の実機検証(前回 change 同様、Windows インストーラのみを対象とし、他OSは将来のリリース時に確認)
 - 既存の `pluely.db` に保存されたローカルデータ(会話履歴・設定)のマイグレーション設計(DB ファイル名変更をスコープに含めると決めた場合でも、データ移行の詳細設計は別 change に切り出すことを検討する)
 

@@ -20,11 +20,12 @@ Issue #11（`アプリの名称を変更したい`）にて、ユーザーから
 
 ### Modified Capabilities
 - `product-branding`: 既存要件(「アプリ内UIのブランド名表記が統一されている」)はブランド名が何であるかを固定しておらず、`Interview-Pilot` → `interview-assistant` への再リネームもその範囲内で扱える(要件文言自体の変更は不要)。ただし今回の Issue #11 は「GitHub リポジトリ名(`interview-assistant`)とアプリの製品識別名を一致させたい」という、従来の「内部で名称が統一されていること」より一段具体的な要望であるため、この観点を新しい requirement として追加する
+- `project-documentation`: 既存要件が README のブランド名を `Interview-Pilot` と明記しているため、README が新ブランド名 `Interview-Assistant` を記載し、このリポジトリへのリンクを使用するよう要件とシナリオを更新する
 
 `installer-release-workflow` の既存要件(「生成物のファイル名がアプリの productName に追従する」)は `productName` の値そのものを固定しておらず、そのまま適用できるため変更しない。
 
 ## Impact
 
-- 影響ファイル: `package.json`、`package-lock.json`、`src-tauri/Cargo.toml`、`src-tauri/Cargo.lock`、`src-tauri/tauri.conf.json`、`src-tauri/src/window.rs`、`src-tauri/src/main.rs`(`[lib] name` を `interview_assistant_lib` に変更する場合、`interview_pilot_lib::run()` 呼び出しをあわせて更新しないとビルドが失敗する)、`.github/workflows/ci.yml`(`releaseName: "Interview-Pilot v__VERSION__"` として GitHub Release タイトルに表示されている)、および UI 内で「Interview-Pilot」を表示している箇所(前回 change の Impact に列挙された `src/components/Sidebar.tsx` 等を含む、網羅的な洗い出しは design.md / 実装時に grep で再確認する)、`CLAUDE.md`(パッケージ/バイナリ名・identifier の記述)
+- 影響ファイル: `package.json`、`package-lock.json`、`src-tauri/Cargo.toml`、`src-tauri/Cargo.lock`、`src-tauri/tauri.conf.json`、`src-tauri/src/window.rs`、`src-tauri/src/main.rs`(`[lib] name` を `interview_assistant_lib` に変更する場合、`interview_pilot_lib::run()` 呼び出しをあわせて更新しないとビルドが失敗する)、`.github/workflows/ci.yml`(`releaseName: "Interview-Pilot v__VERSION__"` として GitHub Release タイトルに表示されている)、および UI 内で「Interview-Pilot」を表示している箇所(前回 change の Impact に列挙された `src/components/Sidebar.tsx` 等を含む、網羅的な洗い出しは design.md / 実装時に grep で再確認する)、`README.md`、`SECURITY.md`、`CLAUDE.md`(ブランド名、リポジトリ URL、パッケージ/バイナリ名・identifier の記述)
 - 影響システム: GitHub Actions `publish`/`ci` ワークフローが生成するインストーラファイル名・GitHub Release名
-- 非対象: ライセンス変更(GPL-3.0 のまま)、アプリアイコン・ロゴ等の新規ビジュアルアセット制作(別スコープ)、README.md / SECURITY.md 以外の外部公開ドキュメント整備(必要になれば別 change)
+- 非対象: ライセンス変更(GPL-3.0 のまま)、アプリアイコン・ロゴ等の新規ビジュアルアセット制作(別スコープ)、`README.md` / `SECURITY.md` 以外の外部公開ドキュメント整備(必要になれば別 change)、履歴を記録する `CHANGELOG.md` の過去エントリ、生成物である `openwiki/` の手動編集
