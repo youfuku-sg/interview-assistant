@@ -22,7 +22,7 @@
 - `productName` / パッケージ名 / `identifier` を `interview-assistant` 系列に変更する場合の具体的な値と、変更範囲(ファイル一覧)を確定する
 - `identifier` 変更に伴うリスク(既存インストール環境との互換性)を、前回 change での知見を踏まえて再整理する
 - アプリ内UIに残る可能性のある「Interview-Pilot」表記の置き換え候補を洗い出す
-- 今回のリネームと合わせて対応すべきか判断が必要な残存箇所(`pluely.desktop` リソース名、`pluely.db` の DB ファイル名、`package.json`/`Cargo.toml` の fork元 URL)を明示し、スコープに含めるかどうかの方針を示す
+- 今回のリネームと合わせて対応すべき残存箇所を分類し、製品メタデータとユーザー向け upstream 導線は更新対象、互換性に関わる `pluely.desktop` / `pluely.db` は対象外とする
 - README / SECURITY のブランド名とリポジトリ URL を新名称へ更新し、`project-documentation` capability の規範要件も同じ名称へ更新する
 
 **Non-Goals:**
@@ -52,20 +52,20 @@
    - 決定: 前回 change の踏襲として、ユーザー向け表示文言(JSX にレンダリングされる文字列)のみを「Interview-Assistant」に置き換える。関数名・コンポーネント名・ファイル名・localStorage キー名・コード内コメント・`console.*` ログは対象外とする(前回 change の決定と同じ理由: 表示文言のみのリネームに留め、差分と既存ローカルデータへの影響を最小化する)
    - 実装時に `grep -rn "Interview-Pilot\|interview-pilot" src/` で網羅的に洗い出し、対象箇所をリストアップしてから置き換える
 
-5. **`bundle.resources` の `pluely.desktop`、`plugins.sql.preload` の `pluely.db`、fork元 URL(`iamsrikanthnani/pluely`)の扱い**
-   - 決定: 今回のスコープには含めない
+5. **`bundle.resources` の `pluely.desktop`、`plugins.sql.preload` の `pluely.db`、fork元 URL・導線の扱い**
+   - 決定: 互換性に関わるファイル名は今回のスコープに含めないが、製品自身を表す URL とユーザー向け導線は含める
      - `pluely.desktop`: Linux 向け `.desktop` エントリのリソースファイル名。前回 change でも対象外とされており、変更するにはファイル自体のリネームと動作確認(Linux 環境)が必要なため、今回も見送る
      - `pluely.db`: 既存ローカルインストールのデータベースファイル名を変更すると、会話履歴・設定を含む既存データの移行処理が必要になる。今回の Issue はブランド名・識別子のリネームが主旨であり、データ移行を伴う変更は影響範囲・リスクが大きく別 change として扱うべきと判断する
-     - `package.json` / `Cargo.toml` の `repository`/`homepage`/`bugs`/`documentation` URL: fork元 `iamsrikanthnani/pluely` から現在の実リポジトリ `youfuku-sg/interview-assistant` への更新は、今回のブランド名リネームと直接の依存関係はなく、独立して対応可能なドキュメント整合性の問題である。ユーザーへの確認事項として tasks.md に残すが、必須実装項目とはしない
+     - `package.json` / `Cargo.toml` の `repository`/`homepage`/`bugs`/`documentation` URL は製品メタデータであり、現在の実リポジトリ `youfuku-sg/interview-assistant` へ更新する。`src/hooks/useMenuItems.tsx` の upstream 問い合わせ先・Web・GitHub・作者支援リンクもユーザー向け導線であるため、現在のプロジェクトに有効な導線へ置換するか、代替がない項目は削除する。README の fork 元クレジットは適切な帰属として維持する
 
 ## Risks / Trade-offs
 
 - [Risk] `identifier` を変更すると、既存インストール環境(開発機など)で二重インストール状態になる可能性がある → [Mitigation] 変更前に既存インストールをアンインストールする手順を `docs/仕様/GitHub Actions リリース手順.md` 等に記載する(前回 change の Risk と同じ)
 - [Risk] `productName` 変更後、初回ビルドで生成物名が変わることに伴う周知漏れ(過去のインストーラ名を前提にした手順書等) → [Mitigation] `docs/仕様/GitHub Actions リリース手順.md` の記載を更新する
-- [Trade-off] `pluely.desktop` / `pluely.db` / fork元 URL を今回のスコープに含めないため、リネーム後も一部のファイル名・URL に旧ブランド名が残る。ユーザーへの説明が必要
+- [Trade-off] `pluely.desktop` / `pluely.db` は今回のスコープに含めないため、リネーム後も内部ファイル名に旧ブランド名が残る。既存データと Linux リソースの互換性を優先した意図的な残存として扱う
 - [Risk] 実際に Tauri アプリを起動して「Interview-Pilot」表記の置き換えを目視確認できる作業環境がない(前回 change と同じ制約) → [Mitigation] grep による網羅確認と `npm run typecheck` / `npm run build` の成功確認に留め、実機での目視確認はユーザー側の動作検証(Issue駆動開発フロー 4.11)に委ねる
 
 ## Open Questions
 
-- `pluely.desktop` / `pluely.db` / fork元 URL(`iamsrikanthnani/pluely`)を今回のリネームに含めるべきか、次回以降の別 change に先送りしてよいか(Decisions 5 で「含めない」と一旦判断したが、ユーザーの意向を tasks.md の確認ステップで再確認する)
+- `pluely.desktop` / `pluely.db` を将来の別 change で移行するか(今回のリネームでは互換性維持のため対象外)
 - `productName` を Title-Case(`Interview-Assistant`)にするか、Issue 本文どおり全小文字(`interview-assistant`)にするか(Decisions 1 で Title-Case を仮決定したが、ユーザーの意向を tasks.md の確認ステップで再確認する)
