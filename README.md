@@ -1,13 +1,13 @@
-# Interview-Pilot
+# Interview-Assistant
 
-[![Open Source](https://img.shields.io/badge/Open%20Source-❤️-blue)](https://github.com/youfuku-sg/Interview-Pilot)
+[![Open Source](https://img.shields.io/badge/Open%20Source-❤️-blue)](https://github.com/youfuku-sg/interview-assistant)
 [![Tauri](https://img.shields.io/badge/Built%20with-Tauri-orange)](https://tauri.app/)
 [![React](https://img.shields.io/badge/Frontend-React%20%2B%20TypeScript-blue)](https://reactjs.org/)
 [![License](https://img.shields.io/badge/License-GPL%20v3-blue.svg)](LICENSE)
 
 ## 概要
 
-Interview-Pilot は、面接準備・回答補助のためのローカルファーストなデスクトップアプリです。オープンソースの AI アシスタントアプリ [Pluely](https://github.com/iamsrikanthnani/pluely)(Cluely のオープンソース版)を fork し、個人利用の面接支援用途に作り替えています。
+Interview-Assistant は、面接準備・回答補助のためのローカルファーストなデスクトップアプリです。オープンソースの AI アシスタントアプリ [Pluely](https://github.com/iamsrikanthnani/pluely)(Cluely のオープンソース版)を fork し、個人利用の面接支援用途に作り替えています。
 
 本プロジェクトは開発者本人の個人利用のみを想定しており、第三者への配布や商用提供は現時点で行いません(詳細は [`docs/仕様/要求仕様書.md`](docs/仕様/要求仕様書.md) を参照してください)。また、経歴の捏造や「面接官に検知されずに使う」ことを価値として訴求することは方針として避けています(同仕様書 8.6 節)。ここで紹介する機能は、あくまで自分の経験を整理し、回答を準備・補助するためのものです。
 
@@ -33,7 +33,7 @@ PC が再生している音声(会議・動画など)をリアルタイムで取
 
 ### オーバーレイウィンドウ
 
-Interview-Pilot は半透明のオーバーレイウィンドウを常時最前面に表示し、キーボードショートカットひとつで表示・非表示や位置移動ができます。このオーバーレイは画面共有や録画に映り込みにくい特性を持ちますが、これは面接官を欺くための機能ではなく、自分の手元でメモや準備内容をすぐに参照できるようにするための表示上の特性です。経歴の捏造や、理解していない回答をそのまま読み上げるような使い方は想定していません。
+Interview-Assistant は半透明のオーバーレイウィンドウを常時最前面に表示し、キーボードショートカットひとつで表示・非表示や位置移動ができます。このオーバーレイは画面共有や録画に映り込みにくい特性を持ちますが、これは面接官を欺くための機能ではなく、自分の手元でメモや準備内容をすぐに参照できるようにするための表示上の特性です。経歴の捏造や、理解していない回答をそのまま読み上げるような使い方は想定していません。
 
 ### ダッシュボード
 
@@ -100,8 +100,8 @@ AI の応答方針を定義するシステムプロンプトを作成・編集�
 
 ```bash
 # リポジトリを取得
-git clone https://github.com/youfuku-sg/Interview-Pilot.git
-cd Interview-Pilot
+git clone https://github.com/youfuku-sg/interview-assistant.git
+cd interview-assistant
 
 # 依存関係のインストール
 npm install

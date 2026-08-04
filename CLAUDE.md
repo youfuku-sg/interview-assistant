@@ -1,13 +1,13 @@
 # CLAUDE.md
 
-Interview-Pilot is a personal-use fork of [Pluely](https://github.com/iamsrikanthnani/pluely), being repurposed into a local-first interview-preparation and answer-assist desktop app. GPL-3.0 licensed (inherited from Pluely); no third-party redistribution is planned — see `docs/仕様/要求仕様書.md` §8.7.
+Interview-Assistant is a personal-use fork of [Pluely](https://github.com/iamsrikanthnani/pluely), being repurposed into a local-first interview-preparation and answer-assist desktop app. GPL-3.0 licensed (inherited from Pluely); no third-party redistribution is planned — see `docs/仕様/要求仕様書.md` §8.7.
 
 ## Tech stack
 
 - Frontend: React 19 + TypeScript, built with Vite (`npm run dev`, `npm run build`, `npm run typecheck`, `npm run lint`).
 - Backend: Tauri v2 (Rust), source under `src-tauri/`.
 - Storage: SQLite via `tauri-plugin-sql`, migrations in `src-tauri/src/db/`.
-- Package/binary name, `productName`, and `identifier` are `interview-pilot` / `Interview-Pilot` / `com.interview-pilot.app` (renamed from Pluely's `pluely` / `Pluely` / `com.srikanthnani.pluely`) — see [rebrand-product-identity](openspec/changes/rebrand-product-identity/).
+- Package/binary name, `productName`, and `identifier` are `interview-assistant` / `Interview-Assistant` / `com.interview-assistant.app` (renamed from Pluely's `pluely` / `Pluely` / `com.srikanthnani.pluely`, then from `interview-pilot` / `Interview-Pilot` / `com.interview-pilot.app`) — see [rebrand-product-identity](openspec/changes/archive/2026-07-04-rebrand-product-identity/).
 
 ## Directory structure
 

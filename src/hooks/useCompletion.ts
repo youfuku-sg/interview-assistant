@@ -876,7 +876,7 @@ export const useCompletion = () => {
             setState((prev) => ({
               ...prev,
               error:
-                "画面収録の権限が必要です。システム設定 > プライバシーとセキュリティ > 画面と システム音声の録画 から有効にしてください。一覧にInterview-Pilotが表示されない場合は「+」ボタンをクリックして追加してください。すでに一覧にある場合は有効になっているか確認してください。設定後、アプリを再起動してください。",
+                "画面収録の権限が必要です。システム設定 > プライバシーとセキュリティ > 画面と システム音声の録画 から有効にしてください。一覧にInterview-Assistantが表示されない場合は「+」ボタンをクリックして追加してください。すでに一覧にある場合は有効になっているか確認してください。設定後、アプリを再起動してください。",
             }));
             setIsScreenshotLoading(false);
             screenshotInitiatedByThisContext.current = false;

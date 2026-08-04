@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Interview-Pilot",
+  "productName": "Interview-Assistant",
   "version": "0.5.18",
-  "identifier": "com.interview-pilot.app",
+  "identifier": "com.interview-assistant.app",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -13,7 +13,7 @@
     "macOSPrivateApi": true,
     "windows": [
       {
-        "title": "Interview-Pilot - AIアシスタント",
+        "title": "Interview-Assistant - AIアシスタント",
         "width": 600,
         "height": 54,
         "decorations": false,
