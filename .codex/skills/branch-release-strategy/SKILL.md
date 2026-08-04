@@ -3,7 +3,7 @@ name: branch-release-strategy
 description: Follow the repository branch and release strategy when starting work, creating branches, preparing releases, choosing versions, updating VERSION/CHANGELOG, always creating v-version release tags, handling hotfixes, or ensuring incidental repository diffs such as OpenSpec files are committed before release.
 license: MIT
 metadata:
-  author: Interview-Pilot
+  author: Interview-Assistant
   version: "1.3"
   sourceDocument: "docs/仕様/ブランチ・リリース戦略.md"
 ---
@@ -90,7 +90,6 @@ Do not decide these items independently. If a task requires one of them, ask the
 - Whether to build Windows first or all three OS targets together.
 - Whether to produce Tauri updater JSON.
 - Whether unsigned builds are acceptable for the current release.
-- When to rename app identity from Pluely to Interview-Pilot.
 
 ## Agent Behavior
 

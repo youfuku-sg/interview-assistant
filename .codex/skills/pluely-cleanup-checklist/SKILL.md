@@ -3,14 +3,14 @@ name: pluely-cleanup-checklist
 description: Check for and flag residual Pluely-era analytics, license-key, and stealth-marketing content when touching README, SECURITY.md, package.json, Cargo.toml, or any user-facing copy. Use before finishing changes that touch product copy, dependencies, or telemetry-adjacent code.
 license: MIT
 metadata:
-  author: Interview-Pilot
+  author: Interview-Assistant
   version: "1.0"
   sourceDocument: "docs/仕様/要求仕様書.md"
 ---
 
 Use this skill whenever a change touches `README.md`, `SECURITY.md`, `package.json`, `src-tauri/Cargo.toml`, or any other user-facing copy/dependency file, or whenever telemetry/analytics/license behavior is discussed.
 
-This repository is a fork of Pluely (`iamsrikanthnani/pluely`), being repurposed as a personal interview-support tool ("Interview-Pilot"). `docs/仕様/要求仕様書.md` §13.1 (最優先) requires cleaning up Pluely-origin analytics/license/stealth artifacts, and §8.4/§8.6 forbid unnecessary external telemetry and "undetectable/stealth" marketing framing. Read those sections for full rationale; this skill is the recurring checklist, not the source of truth.
+This repository is a fork of Pluely (`iamsrikanthnani/pluely`), being repurposed as a personal interview-support tool ("interview-assistant"). `docs/仕様/要求仕様書.md` §13.1 (最優先) requires cleaning up Pluely-origin analytics/license/stealth artifacts, and §8.4/§8.6 forbid unnecessary external telemetry and "undetectable/stealth" marketing framing. Read those sections for full rationale; this skill is the recurring checklist, not the source of truth.
 
 ## What to check
 
