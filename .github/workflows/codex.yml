@@ -30,11 +30,18 @@ jobs:
         with:
           ref: ${{ steps.pr.outputs.ref }}
 
+      - name: Set up Codex auth (ChatGPT subscription login)
+        env:
+          CODEX_AUTH_JSON: ${{ secrets.CODEX_AUTH_JSON }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/codex-home"
+          printf '%s' "$CODEX_AUTH_JSON" > "$RUNNER_TEMP/codex-home/auth.json"
+
       - name: Run Codex
         id: codex
         uses: openai/codex-action@52fe01ec70a42f454c9d2ebd47598f9fd6893d56 # v1
         with:
-          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          codex-home: ${{ runner.temp }}/codex-home
           prompt: ${{ github.event.comment.body }}
           sandbox: workspace-write
 
