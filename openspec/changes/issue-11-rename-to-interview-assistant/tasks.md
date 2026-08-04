@@ -7,12 +7,12 @@
 ## 2. 実装(1章の決定内容に基づく)
 
 - [ ] 2.1 `package.json` の `name` を更新する(`"interview-assistant"`)
-- [ ] 2.2 `src-tauri/Cargo.toml` の `[package] name` / `[lib] name` を更新する(`"interview-assistant"` / `"interview_assistant_lib"`)
+- [ ] 2.2 `src-tauri/Cargo.toml` の `[package] name` / `[lib] name` を更新する(`"interview-assistant"` / `"interview_assistant_lib"`)。あわせて `src-tauri/src/main.rs` の `interview_pilot_lib::run()` 呼び出しを `interview_assistant_lib::run()` に更新する(`[lib] name` を変更した場合、この参照を合わせて更新しないと `cargo build` がクレート名不一致でエラーになる)
 - [ ] 2.3 `src-tauri/tauri.conf.json` の `productName` を 1.1 の決定に基づき更新する
 - [ ] 2.4 `src-tauri/tauri.conf.json` の `identifier` を 1.2 の決定に基づき更新する
 - [ ] 2.5 `src-tauri/src/window.rs` のウィンドウタイトル(`"Interview-Pilot - ダッシュボード"` 等、複数OS分岐箇所)を `"Interview-Assistant - ダッシュボード"` に更新する
 - [ ] 2.6 `src-tauri/tauri.conf.json` の `app.windows[0].title`(`"Interview-Pilot - AIアシスタント"`)を `"Interview-Assistant - AIアシスタント"` に更新する
-- [ ] 2.7 `grep -rn "Interview-Pilot\|interview-pilot\|interview_pilot" src/ src-tauri/ --include="*.tsx" --include="*.ts" --include="*.rs" --include="*.json" --include="*.toml"` で網羅的に洗い出し、ユーザー向け表示文言(JSX にレンダリングされる文字列)のみを「Interview-Assistant」に置き換える。関数名・コンポーネント名・ファイル名・localStorage キー名・コード内コメント・`console.*` ログは対象外とする(design.md Decisions 4)
+- [ ] 2.7 `grep -rn "Interview-Pilot\|interview-pilot\|interview_pilot" src/ src-tauri/ .github/ --include="*.tsx" --include="*.ts" --include="*.rs" --include="*.json" --include="*.toml" --include="*.yml"` で網羅的に洗い出し、ユーザー向け表示文言(JSX にレンダリングされる文字列)のみを「Interview-Assistant」に置き換える。関数名・コンポーネント名・ファイル名・localStorage キー名・コード内コメント・`console.*` ログは対象外とする(design.md Decisions 4)。`.github/workflows/ci.yml` の `releaseName: "Interview-Pilot v__VERSION__"`(GitHub Release タイトルとしてユーザーに表示される)も置き換え対象に含める
 - [ ] 2.8 `package-lock.json` を `npm install` で再生成する。`Cargo.lock` はビルド環境で `cargo check` 等を実行し、`name` フィールドの整合性を確認する
 - [ ] 2.9 (1.3 で対象に含める決定の場合のみ)`pluely.desktop` / `pluely.db` / fork元 URL を更新する
 

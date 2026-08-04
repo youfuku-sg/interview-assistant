@@ -25,6 +25,6 @@ Issue #11（`アプリの名称を変更したい`）にて、ユーザーから
 
 ## Impact
 
-- 影響ファイル: `package.json`、`package-lock.json`、`src-tauri/Cargo.toml`、`src-tauri/Cargo.lock`、`src-tauri/tauri.conf.json`、`src-tauri/src/window.rs`、および UI 内で「Interview-Pilot」を表示している箇所(前回 change の Impact に列挙された `src/components/Sidebar.tsx` 等を含む、網羅的な洗い出しは design.md / 実装時に grep で再確認する)、`CLAUDE.md`(パッケージ/バイナリ名・identifier の記述)
+- 影響ファイル: `package.json`、`package-lock.json`、`src-tauri/Cargo.toml`、`src-tauri/Cargo.lock`、`src-tauri/tauri.conf.json`、`src-tauri/src/window.rs`、`src-tauri/src/main.rs`(`[lib] name` を `interview_assistant_lib` に変更する場合、`interview_pilot_lib::run()` 呼び出しをあわせて更新しないとビルドが失敗する)、`.github/workflows/ci.yml`(`releaseName: "Interview-Pilot v__VERSION__"` として GitHub Release タイトルに表示されている)、および UI 内で「Interview-Pilot」を表示している箇所(前回 change の Impact に列挙された `src/components/Sidebar.tsx` 等を含む、網羅的な洗い出しは design.md / 実装時に grep で再確認する)、`CLAUDE.md`(パッケージ/バイナリ名・identifier の記述)
 - 影響システム: GitHub Actions `publish`/`ci` ワークフローが生成するインストーラファイル名・GitHub Release名
 - 非対象: ライセンス変更(GPL-3.0 のまま)、アプリアイコン・ロゴ等の新規ビジュアルアセット制作(別スコープ)、README.md / SECURITY.md 以外の外部公開ドキュメント整備(必要になれば別 change)

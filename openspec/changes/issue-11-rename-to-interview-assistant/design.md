@@ -9,6 +9,7 @@
 - `src-tauri/src/window.rs`: メインダッシュボードウィンドウの `.title("Interview-Pilot - ダッシュボード")`(前回 change で Pluely から置き換え済み)
 - `src-tauri/tauri.conf.json` の `bundle.resources` に `"pluely.desktop"`、`bundle.windows.wix.language` は `["ja-JP"]`、`bundle.windows.nsis.languages` は `["Japanese"]`(前回 change で日本語化済み、今回変更不要)
 - `src-tauri/tauri.conf.json` の `plugins.sql.preload` が `"sqlite:pluely.db"` を指定しており、DB ファイル名自体が `pluely.db` のまま(前回 change・`localize-ui-japanese` のいずれでもスコープ外だった残存箇所)
+- `.github/workflows/ci.yml` の `releaseName: "Interview-Pilot v__VERSION__"` が GitHub Release のタイトルとして「Interview-Pilot」を表示しており、`src/`・`src-tauri/` のみを対象とした grep(前回 change・design.md 双方の想定範囲)では見落とされる。今回のリネームでは `.github/` も grep 対象に含める(tasks.md 2.7)
 - Git リモート(`origin`)はすでに `https://github.com/youfuku-sg/interview-assistant` を指しており、GitHub 上のリポジトリ名は `interview-assistant` に変更済み。今回の Issue #11 はこのリポジトリ名とアプリ内の製品名(`Interview-Pilot`)の不一致を解消したいという要望である
 - 実際に Tauri アプリを起動できない作業環境(Rust ツールチェーン・GUI なし)であるため、アプリ内UIに「Interview-Pilot」表記が実際に残っているかは、前回 change のアーカイブ内容(`openspec/changes/archive/2026-07-04-rebrand-product-identity/`)と grep による確認に頼る。前回 change の Impact に列挙された箇所(`src/components/Sidebar.tsx` 等)はすべて「Interview-Pilot」に置き換え済みのはずだが、実装時に改めて `grep -rn "Interview-Pilot\|interview-pilot" src/ src-tauri/ --include="*.tsx" --include="*.ts" --include="*.rs" --include="*.json" --include="*.toml"` で網羅的に洗い出す必要がある
 
@@ -33,7 +34,7 @@
 1. **`productName` / パッケージ名の変更**
    - 決定: `interview-assistant` に統一する。GitHub リポジトリ名(`youfuku-sg/interview-assistant`)とアプリの製品名を一致させることが Issue #11 の主旨であるため、前回のような Title-Case 表記(`Interview-Pilot`)ではなく、Issue 本文の表記(`interview-assistant`)をそのまま採用する
    - `package.json` の `name`: `"interview-assistant"`
-   - `src-tauri/Cargo.toml` の `[package] name`: `"interview-assistant"`、`[lib] name`: Windows 上でのバイナリ名衝突回避のため `"interview_assistant_lib"`(前回の `interview_pilot_lib` と同じ命名規則)
+   - `src-tauri/Cargo.toml` の `[package] name`: `"interview-assistant"`、`[lib] name`: Windows 上でのバイナリ名衝突回避のため `"interview_assistant_lib"`(前回の `interview_pilot_lib` と同じ命名規則)。`src-tauri/src/main.rs` は `interview_pilot_lib::run()` としてこのクレート名を直接参照しているため、`[lib] name` の変更と同時にこの呼び出しも `interview_assistant_lib::run()` に更新する必要がある(更新しないと `cargo build` がクレート名不一致でエラーになる)
    - `src-tauri/tauri.conf.json` の `productName`: `"Interview-Assistant"`(前回 change が `productName` に Title-Case ハイフン区切り(`Interview-Pilot`)を採用しており、インストーラファイル名等の表示に適した形式のため踏襲する)
    - 代替案として `productName` を `"interview-assistant"`(全小文字)にする案も検討したが、Windows インストーラ名(`interview-assistant_<version>_x64_ja-JP.msi`)の視認性が前回より下がるため採用しない
 
