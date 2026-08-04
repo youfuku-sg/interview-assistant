@@ -10,6 +10,11 @@ on:
   push:
     branches:
       - "build/**"
+  # Pushes made with the automatic GITHUB_TOKEN (as the self-hosted
+  # build-confirm job does) do NOT trigger other workflow runs -- a
+  # documented GitHub Actions limitation to prevent infinite trigger loops.
+  # workflow_dispatch, called explicitly via the REST API, is the workaround.
+  workflow_dispatch:
 
 permissions:
   contents: read

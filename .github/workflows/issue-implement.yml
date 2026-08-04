@@ -325,24 +325,27 @@ jobs:
           for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
             Write-Host "=== Build attempt $attempt ==="
 
-            # A force-push that only re-points build/<N> to a commit SHA
-            # GitHub has already seen (e.g. the same tip as feature/<N>)
-            # carries an empty "commits" list and does NOT fire push-based
-            # Actions -- verified empirically. An --allow-empty commit
-            # guarantees a genuinely new SHA each attempt so the push event
-            # actually fires.
             git commit --allow-empty -m "chore: trigger build for issue #$env:ISSUE_NUMBER (attempt $attempt)" | Out-Null
             git push --force origin "HEAD:refs/heads/build/$env:ISSUE_NUMBER"
             $sha = (git rev-parse HEAD).Trim()
             Write-Host "Pushed SHA: $sha"
 
+            # Pushes made with the automatic GITHUB_TOKEN don't trigger other
+            # workflow runs (documented, to prevent infinite trigger loops),
+            # so the push above alone won't start build.yml. Dispatch it
+            # explicitly instead -- verified this actually fires.
+            $dispatchTime = (Get-Date).ToUniversalTime()
+            $dispatchBody = @{ ref = "build/$env:ISSUE_NUMBER" } | ConvertTo-Json
+            Invoke-RestMethod -Method Post -Headers $headers -Uri "https://api.github.com/repos/$repo/actions/workflows/build.yml/dispatches" -Body $dispatchBody -ContentType "application/json"
+
             $runId = $null
             for ($i = 0; $i -lt 30; $i++) {
               Start-Sleep -Seconds 10
               try {
-                $resp = Invoke-RestMethod -Headers $headers -Uri "https://api.github.com/repos/$repo/actions/workflows/build.yml/runs?head_sha=$sha"
-                if ($resp.total_count -gt 0) {
-                  $runId = $resp.workflow_runs[0].id
+                $resp = Invoke-RestMethod -Headers $headers -Uri "https://api.github.com/repos/$repo/actions/workflows/build.yml/runs?event=workflow_dispatch&branch=build/$env:ISSUE_NUMBER"
+                $candidate = $resp.workflow_runs | Where-Object { [datetime]$_.created_at -ge $dispatchTime.AddSeconds(-5) } | Select-Object -First 1
+                if ($candidate) {
+                  $runId = $candidate.id
                   break
                 }
               } catch {
@@ -351,7 +354,7 @@ jobs:
             }
 
             if (-not $runId) {
-              Write-Host "No build run appeared for $sha within timeout."
+              Write-Host "No build run appeared for dispatch at $dispatchTime within timeout."
               continue
             }
 
