@@ -36,3 +36,6 @@ top bar transcript summary panel
 ---
 
 
+interview-assistant
+
+
