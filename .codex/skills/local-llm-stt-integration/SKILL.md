@@ -3,7 +3,7 @@ name: local-llm-stt-integration
 description: Wire local LLM (Ollama, LM Studio) and local STT (whisper.cpp, faster-whisper) providers into the existing curl-based Dev Space custom-provider settings, rather than building new provider-specific integrations. Use when implementing AI-provider or STT-provider connectivity.
 license: MIT
 metadata:
-  author: Interview-Pilot
+  author: Interview-Assistant
   version: "1.0"
   sourceDocument: "docs/仕様/要求仕様書.md"
 ---

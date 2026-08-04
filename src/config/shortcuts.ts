@@ -24,7 +24,7 @@ export const DEFAULT_SHORTCUT_ACTIONS: ShortcutAction[] = [
   {
     id: "focus_input",
     name: "入力欄にフォーカス",
-    description: "Interview-Pilotを前面に表示し、入力欄にカーソルを合わせます",
+    description: "Interview-Assistantを前面に表示し、入力欄にカーソルを合わせます",
     defaultKey: {
       macos: "cmd+shift+i",
       windows: "ctrl+shift+i",

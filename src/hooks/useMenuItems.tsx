@@ -85,7 +85,7 @@ export const useMenuItems = () => {
     },
     {
       icon: PowerIcon,
-      label: "Interview-Pilotを終了",
+      label: "Interview-Assistantを終了",
       action: async () => {
         await invoke("exit_app");
       },

@@ -4,6 +4,6 @@
 
 報告いただいた内容は確認のうえ、可能な限り速やかに対応します。
 
-脆弱性の報告には、GitHub のプライベート脆弱性報告機能の利用を推奨します。本リポジトリの [Security タブ](https://github.com/youfuku-sg/Interview-Pilot/security) から **"Report a vulnerability"** ボタンを選択して報告してください。
+脆弱性の報告には、GitHub のプライベート脆弱性報告機能の利用を推奨します。本リポジトリの [Security タブ](https://github.com/youfuku-sg/interview-assistant/security) から **"Report a vulnerability"** ボタンを選択して報告してください。
 
 本プロジェクトは開発者本人の個人利用を前提とした非公開・非配布のフォークであり([`docs/仕様/要求仕様書.md`](docs/仕様/要求仕様書.md) 8.7節)、上記以外の緊急連絡先は設けていません。

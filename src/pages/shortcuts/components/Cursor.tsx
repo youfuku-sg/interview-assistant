@@ -23,7 +23,7 @@ export const CursorSelection = ({ className }: CursorSelectionProps) => {
     <div id="cursor" className={`space-y-2 ${className}`}>
       <Header
         title="カーソル"
-        description="Interview-Pilotのカーソル表示を制御します"
+        description="Interview-Assistantのカーソル表示を制御します"
         isMainTitle
         rightSlot={
           <Select

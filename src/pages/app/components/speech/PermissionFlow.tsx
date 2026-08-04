@@ -105,7 +105,7 @@ export const PermissionFlow = ({
     requesting: {
       icon: <LoaderIcon className="w-5 h-5 animate-spin" />,
       title: "権限の許可待ち",
-      description: `システム設定でInterview-Pilotを有効にしてください (${checkAttempts}/20)`,
+      description: `システム設定でInterview-Assistantを有効にしてください (${checkAttempts}/20)`,
       bgColor: "bg-orange-50",
       borderColor: "border-orange-200",
       textColor: "text-orange-800",
@@ -165,7 +165,7 @@ export const PermissionFlow = ({
                   <li>システム設定を開く</li>
                   <li>「プライバシーとセキュリティ」に移動</li>
                   <li>「画面と システム音声の録画」を選択</li>
-                  <li>Interview-Pilotを有効にする</li>
+                  <li>Interview-Assistantを有効にする</li>
                 </ol>
               )}
             </div>

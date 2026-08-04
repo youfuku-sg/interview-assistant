@@ -1,4 +1,4 @@
-# Interview-Pilot TODO
+# Interview-Assistant TODO
 
 ## 0. 現在の作業段階
 
@@ -20,7 +20,7 @@
 
 ## 1. 目的
 
-この文書は、Interview-Pilot を Pluely ベースの面接支援アプリへ改修していくための大まかな TODO リストである。
+この文書は、Interview-Assistant を Pluely ベースの面接支援アプリへ改修していくための大まかな TODO リストである。
 
 詳細な仕様は `要求仕様書.md`、Pluely 既存機能の把握は `Pluely機能把握メモ.md` を参照する。
 
@@ -63,7 +63,7 @@
 
 ### Phase 2: 個人利用向けドキュメント整理
 
-- [ ] README の目的を Interview-Pilot 向けに書き換える
+- [ ] README の目的を Interview-Assistant 向けに書き換える
 - [ ] README から Pluely のマーケティング文言を整理する
 - [ ] README に「個人利用前提」であることを書く
 - [ ] README に「配布 / SaaS 化は現時点で想定しない」と書く
@@ -143,7 +143,7 @@
 - [ ] Pluely 標準プロンプト取得機能を整理する
 - [ ] PostHog analytics を削除または無効化する
 - [ ] 不要な外部通信を洗い出す
-- [ ] README やアプリ説明文を Interview-Pilot 向けに更新する
+- [ ] README やアプリ説明文を Interview-Assistant 向けに更新する
 
 ### Phase 8: 面接セッション機能
 

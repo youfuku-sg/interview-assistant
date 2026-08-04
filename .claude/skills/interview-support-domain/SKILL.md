@@ -3,7 +3,7 @@ name: interview-support-domain
 description: Domain knowledge and ethical constraints for implementing interview-support features — question extraction, intent classification, answer-assist generation, overlay display, and post-interview reports. Use when implementing or reviewing logic in this domain, not just UI plumbing.
 license: MIT
 metadata:
-  author: Interview-Pilot
+  author: Interview-Assistant
   version: "1.0"
   sourceDocument: "docs/仕様/要求仕様書.md"
 ---

@@ -49,7 +49,7 @@ const Audio = () => {
         </p>
         <p className="text-amber-600/80">
           <strong>注記:</strong>{" "}
-          選択したデバイスが失敗または利用できない場合、Interview-Pilotは自動的にシステムのデフォルト音声デバイスにフォールバックします。
+          選択したデバイスが失敗または利用できない場合、Interview-Assistantは自動的にシステムのデフォルト音声デバイスにフォールバックします。
         </p>
       </div>
     </PageLayout>

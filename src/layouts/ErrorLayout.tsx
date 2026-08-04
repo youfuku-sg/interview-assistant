@@ -27,7 +27,7 @@ export const ErrorLayout = ({ isCompact }: { isCompact?: boolean }) => {
               <SparklesIcon className="size-4 text-background" />
             </div>
             <h1 className="text-md font-semibold text-foreground">
-              Interview-Pilot
+              Interview-Assistant
             </h1>
           </div>
         </div>

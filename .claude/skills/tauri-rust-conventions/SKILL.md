@@ -3,7 +3,7 @@ name: tauri-rust-conventions
 description: Repository-specific Rust/Tauri conventions for src-tauri/ — module layout, OS-specific cfg(target_os) patterns, plugin registration, DB migrations, and capabilities. Use when adding or editing Rust code, Tauri commands/plugins, or platform-specific behavior in src-tauri/.
 license: MIT
 metadata:
-  author: Interview-Pilot
+  author: Interview-Assistant
   version: "1.0"
 ---
 
