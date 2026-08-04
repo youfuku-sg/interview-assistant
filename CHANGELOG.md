@@ -2,6 +2,13 @@
 
 このファイルは [Keep a Changelog](https://keepachangelog.com/) 形式に準ずる。過去のリリース（v0.1.10 より前）は遡って記載しない。形式・運用方針は `docs/仕様/ブランチ・リリース戦略.md` 4.3節を参照。
 
+## [0.6.0] - 2026-08-04
+
+### Changed
+
+- アプリの製品識別名を `Interview-Pilot` から `interview-assistant`（表示名 `Interview-Assistant`）へ全面リネーム（GitHubリポジトリ名との一致）。`package.json`、`src-tauri/Cargo.toml`、`tauri.conf.json`（productName/identifier/ウィンドウタイトル）、UI表示文言、`CLAUDE.md`/`AGENTS.md`/`README.md`/`SECURITY.md`/`docs/仕様/*.md` を更新（Issue #11）
+- Claude/Codex用GitHub Actionsの認証方式を、従量課金APIキー（`ANTHROPIC_API_KEY`/`OPENAI_API_KEY`）からサブスクリプションベースの認証（`CLAUDE_CODE_OAUTH_TOKEN`/ChatGPTログインの`auth.json`）に変更
+
 ## [0.5.18] - 2026-07-23
 
 ### Changed
