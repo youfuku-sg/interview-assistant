@@ -2,6 +2,12 @@
 
 このファイルは [Keep a Changelog](https://keepachangelog.com/) 形式に準ずる。過去のリリース（v0.1.10 より前）は遡って記載しない。形式・運用方針は `docs/仕様/ブランチ・リリース戦略.md` 4.3節を参照。
 
+## [0.6.1] - 2026-08-05
+
+### Changed
+
+- Issue駆動開発フローをspec/dev 2フェーズ構成に再設計し、specフェーズを実装した（`.github/workflows/issue-spec-phase.yml`が`issue-propose.yml`を置き換え）。Issue起票→`spec/<Issue番号>`ブランチ作成→OpenSpec提案作成→Claude Code・Codex・qwenによる並列AIレビュー（Issueコメント経由、最大3ラウンド）→レビューゲート用PR作成、までを自動化した。アプリ本体の挙動に変更はない
+
 ## [0.6.0] - 2026-08-04
 
 ### Changed

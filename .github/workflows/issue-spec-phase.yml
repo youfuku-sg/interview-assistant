@@ -1,0 +1,580 @@
+name: Issue → Spec Phase
+
+# Implements docs/仕様/Issue駆動開発フロー.md §4 (spec フェーズ). Replaces the
+# single feature/<name> branch + sequential in-job AI loop (issue-propose.yml)
+# with a spec/<Issue番号> branch whose AI review round is driven by parallel
+# jobs that post to Issue comments, and a synthesis job that re-triggers the
+# next round via a plain `git push` (no custom polling loop).
+#
+# See openspec/changes/issue-driven-spec-phase-workflow/design.md for the
+# job graph and rationale (D1-D5).
+
+on:
+  issues:
+    types: [opened]
+  push:
+    branches:
+      - "spec/**"
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: spec-phase-${{ github.event.issue.number || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  # ---------------------------------------------------------------------
+  # Issue opened -> branch + proposal
+  # ---------------------------------------------------------------------
+
+  create-branch:
+    # Deterministic, no AI involved: guarantees spec/<N> exists immediately,
+    # even if the proposal step below fails later.
+    if: github.event_name == 'issues'
+    runs-on: ubuntu-latest
+    outputs:
+      branch: spec/${{ github.event.issue.number }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Create and push spec/<issue number>
+        run: |
+          git checkout -b "spec/${{ github.event.issue.number }}"
+          git push origin "spec/${{ github.event.issue.number }}"
+
+  propose:
+    needs: create-branch
+    # Runs on the self-hosted runner so Claude Code can use the machine's
+    # existing local login (no ANTHROPIC_API_KEY secret needed).
+    runs-on: [self-hosted, Windows, X64]
+    steps:
+      - name: Check out spec branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ needs.create-branch.outputs.branch }}
+
+      - name: Create OpenSpec proposal with Claude Code
+        shell: powershell
+        env:
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          $promptPath = "$env:RUNNER_TEMP\claude-propose-prompt.txt"
+          $statusFilePath = "$env:RUNNER_TEMP\claude-propose-status.txt"
+
+          @"
+          A new GitHub Issue (#$env:ISSUE_NUMBER) was just opened. Read its
+          title and body from the "issue" object in the GitHub event payload
+          JSON file at: $env:GITHUB_EVENT_PATH
+          (read the file directly; do not rely on any shell/env copy of its
+          text, which may be mis-encoded on this Windows runner).
+
+          You are already checked out on the spec branch created for this
+          issue (``spec/$env:ISSUE_NUMBER``). Follow this repository's
+          documented Issue駆動開発フロー (docs/仕様/Issue駆動開発フロー.md),
+          §4.1〜4.3, to turn this rough request into an OpenSpec proposal. Do
+          the following, in order:
+
+          1. Read openwiki/quickstart.md and any linked OpenWiki pages
+             relevant to this request to ground it in the current
+             implementation, architecture, and constraints.
+
+          2. Derive a short kebab-case description of the request from the
+             issue title/body (e.g. "improve-stt-error-handling").
+
+          3. Create the OpenSpec change using the openspec-propose skill /
+             process:
+             ``openspec new change "issue-$env:ISSUE_NUMBER-<short-description>" --goal "Issue #$env:ISSUE_NUMBER"``
+             then generate proposal.md, design.md, tasks.md, and any
+             specs/<capability>/spec.md deltas required by the schema. Follow
+             the openspec-propose skill's guidance for what each artifact
+             should contain. Do not implement any code changes at this stage
+             -- only the OpenSpec proposal artifacts.
+
+          4. Commit the new openspec/changes/<name>/ directory on the current
+             branch, with a commit message referencing the issue number
+             (openspec/ is gitignored, so use ``git add -f``).
+
+          5. Write a single line to the file at $statusFilePath`: either
+             "OK: <the exact OpenSpec change name you used>" on success, or
+             "SKIP: <reason>" if the request is too vague to turn into a
+             concrete proposal (in which case do not create any OpenSpec
+             change or commit).
+          "@ | Set-Content -Path $promptPath -Encoding utf8
+
+          Get-Content -Raw $promptPath | claude -p --dangerously-skip-permissions
+
+          if (-not (Test-Path $statusFilePath)) {
+            Write-Host "Claude did not write a status file."
+            exit 1
+          }
+          Get-Content $statusFilePath
+
+      - name: Push proposal commit (if any)
+        shell: powershell
+        run: |
+          $statusFilePath = "$env:RUNNER_TEMP\claude-propose-status.txt"
+          $status = (Get-Content $statusFilePath -Raw).Trim()
+
+          if ($status.StartsWith("SKIP:")) {
+            Write-Host "Skipped: $status"
+            exit 0
+          }
+
+          # Pushing here (not an --allow-empty commit) is what triggers the
+          # first review round via the `push: branches: spec/**` trigger.
+          git push origin "HEAD:refs/heads/${{ needs.create-branch.outputs.branch }}"
+
+  # ---------------------------------------------------------------------
+  # push to spec/<N> -> figure out which round this is
+  # ---------------------------------------------------------------------
+
+  determine-round:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    outputs:
+      issue_number: ${{ steps.compute.outputs.issue_number }}
+      change_name: ${{ steps.compute.outputs.change_name }}
+      round: ${{ steps.compute.outputs.round }}
+      proceed: ${{ steps.compute.outputs.proceed }}
+    steps:
+      - name: Check out spec branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Compute round number and change name
+        id: compute
+        run: |
+          issue_number="${GITHUB_REF_NAME#spec/}"
+          echo "issue_number=$issue_number" >> "$GITHUB_OUTPUT"
+
+          change_name="$(find openspec/changes -maxdepth 1 -mindepth 1 -type d -name "issue-${issue_number}-*" -printf '%f\n' | head -n1)"
+          if [ -z "$change_name" ]; then
+            echo "::error::No openspec/changes/issue-${issue_number}-* directory found on ${GITHUB_REF_NAME}"
+            exit 1
+          fi
+          echo "change_name=$change_name" >> "$GITHUB_OUTPUT"
+
+          # Round N's review happens on the content produced by round N-1's
+          # synthesis commit (or the initial proposal, for round 1). Counting
+          # past synthesis commits and adding 1 gives the round that is about
+          # to run -- no separate state file needed.
+          past_rounds="$(git log --oneline --grep='^AI review round ' | wc -l | tr -d ' ')"
+          round=$((past_rounds + 1))
+          echo "round=$round" >> "$GITHUB_OUTPUT"
+
+          if [ "$round" -le 3 ]; then
+            echo "proceed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "proceed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  # ---------------------------------------------------------------------
+  # Round N: 3 independent review jobs, each posts one Issue comment.
+  # None of them may edit files -- only synthesize (below) does.
+  # ---------------------------------------------------------------------
+
+  claude-review:
+    needs: determine-round
+    if: needs.determine-round.outputs.proceed == 'true'
+    runs-on: ubuntu-latest
+    env:
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+      ISSUE_NUMBER: ${{ needs.determine-round.outputs.issue_number }}
+      CHANGE_NAME: ${{ needs.determine-round.outputs.change_name }}
+      ROUND: ${{ needs.determine-round.outputs.round }}
+    steps:
+      - name: Check out spec branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Install Claude Code CLI
+        run: curl -fsSL https://claude.ai/install.sh | bash
+
+      - name: Review proposal (read-only) and post Issue comment
+        run: |
+          promptFile="$(mktemp)"
+          cat > "$promptFile" <<EOF
+          あなたは経験豊富なソフトウェアアーキテクト兼レビュアーです。3人のAIレビュアー
+          (Claude Code・Codex・qwen(ローカルLLM))の1人として、Issue #$ISSUE_NUMBER の
+          OpenSpec提案 openspec/changes/$CHANGE_NAME/ をラウンド$ROUNDとしてレビューして
+          ください(他の2人はCodexとqwenです)。
+
+          proposal.md・design.md・tasks.md・specs/*/spec.md(存在する場合)を読み直した
+          うえで、以下の観点で精査してください:
+
+          1. 整合性: openspec/specs/ 配下の既存仕様、openwiki/ 配下の現状実装・アーキテク
+             チャと矛盾していないか
+          2. 過不足: 要求として抜け漏れている観点、逆に不要・重複した記述がないか
+          3. 設計判断の妥当性: design.md の Decisions が妥当か、検討すべき代替案が見落と
+             されていないか
+          4. 実現可能性: tasks.md のタスク分解が粒度・順序として実装可能か
+          5. 影響範囲: 破壊的変更や既存機能への影響が明記されているか
+          6. リポジトリ固有の規約: 該当する場合、.claude/skills/ 配下の関連スキル
+             (tauri-rust-conventions・interview-support-domain・branch-release-strategy等)
+             の方針と矛盾していないか
+
+          ファイルは一切編集せず、指摘のみをテキストで報告してください。回答は日本語で
+          記述してください。
+
+          回答の最後に、次のいずれか一行のみを一字一句そのまま記載してください:
+          "VERDICT: AGREE"(提案が現状のまま人間のレビューに進める状態である場合)
+          "VERDICT: REQUEST_CHANGES"(まだ修正が必要と考える場合。理由を上に記述する)
+          EOF
+
+          reviewFile="$(mktemp)"
+          claude -p --dangerously-skip-permissions \
+            --allowedTools "Read,Grep,Glob" \
+            < "$promptFile" > "$reviewFile"
+
+          {
+            echo "<!-- ai-review round=$ROUND agent=claude issue=$ISSUE_NUMBER -->"
+            cat "$reviewFile"
+          } > "$RUNNER_TEMP/comment-body.md"
+
+          gh issue comment "$ISSUE_NUMBER" --body-file "$RUNNER_TEMP/comment-body.md"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+  codex-review:
+    needs: determine-round
+    if: needs.determine-round.outputs.proceed == 'true'
+    runs-on: ubuntu-latest
+    env:
+      CODEX_AUTH_JSON: ${{ secrets.CODEX_AUTH_JSON }}
+      ISSUE_NUMBER: ${{ needs.determine-round.outputs.issue_number }}
+      CHANGE_NAME: ${{ needs.determine-round.outputs.change_name }}
+      ROUND: ${{ needs.determine-round.outputs.round }}
+    steps:
+      - name: Check out spec branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Install Codex CLI
+        run: npm install -g @openai/codex
+
+      - name: Set up Codex auth (ChatGPT subscription login)
+        run: |
+          mkdir -p "$HOME/.codex"
+          printf '%s' "$CODEX_AUTH_JSON" > "$HOME/.codex/auth.json"
+
+      - name: Review proposal (read-only) and post Issue comment
+        run: |
+          promptFile="$(mktemp)"
+          cat > "$promptFile" <<EOF
+          あなたは経験豊富なソフトウェアアーキテクト兼レビュアーです。3人のAIレビュアー
+          (Claude Code・Codex・qwen(ローカルLLM))の1人として、Issue #$ISSUE_NUMBER の
+          OpenSpec提案 openspec/changes/$CHANGE_NAME/ をラウンド$ROUNDとしてレビューして
+          ください(他の2人はClaude Codeとqwenです)。
+
+          proposal.md・design.md・tasks.md・specs/*/spec.md(存在する場合)を読み直した
+          うえで、以下の観点で精査してください:
+
+          1. 整合性: openspec/specs/ 配下の既存仕様、openwiki/ 配下の現状実装・アーキテク
+             チャと矛盾していないか
+          2. 過不足: 要求として抜け漏れている観点、逆に不要・重複した記述がないか
+          3. 設計判断の妥当性: design.md の Decisions が妥当か、検討すべき代替案が見落と
+             されていないか
+          4. 実現可能性: tasks.md のタスク分解が粒度・順序として実装可能か
+          5. 影響範囲: 破壊的変更や既存機能への影響が明記されているか
+          6. リポジトリ固有の規約: 該当する場合、.claude/skills/ 配下の関連スキル
+             (tauri-rust-conventions・interview-support-domain・branch-release-strategy等)
+             の方針と矛盾していないか
+
+          ファイルは一切編集せず、指摘のみをテキストで報告してください。回答は日本語で
+          記述してください。
+
+          回答の最後に、次のいずれか一行のみを一字一句そのまま記載してください:
+          "VERDICT: AGREE"(提案が現状のまま人間のレビューに進める状態である場合)
+          "VERDICT: REQUEST_CHANGES"(まだ修正が必要と考える場合。理由を上に記述する)
+          EOF
+
+          reviewFile="$(mktemp)"
+          codex exec -s read-only < "$promptFile" > "$reviewFile"
+
+          {
+            echo "<!-- ai-review round=$ROUND agent=codex issue=$ISSUE_NUMBER -->"
+            cat "$reviewFile"
+          } > "$RUNNER_TEMP/comment-body.md"
+
+          gh issue comment "$ISSUE_NUMBER" --body-file "$RUNNER_TEMP/comment-body.md"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+  qwen-review:
+    needs: determine-round
+    if: needs.determine-round.outputs.proceed == 'true'
+    # Needs to reach the user's own LM Studio instance at localhost:1234, so
+    # this job cannot run on a GitHub-hosted runner.
+    runs-on: [self-hosted, Windows, X64]
+    env:
+      ISSUE_NUMBER: ${{ needs.determine-round.outputs.issue_number }}
+      CHANGE_NAME: ${{ needs.determine-round.outputs.change_name }}
+      ROUND: ${{ needs.determine-round.outputs.round }}
+      LM_STUDIO_API_KEY: dummy-api-key
+      LM_STUDIO_API_BASE: http://localhost:1234/v1
+      PYTHONUTF8: "1"
+      PYTHONIOENCODING: utf-8
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Check out spec branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Ensure Aider (Python 3.12) is available
+        shell: powershell
+        run: |
+          winget install --id Python.Python.3.12 -e --silent --accept-package-agreements --accept-source-agreements
+          py -3.12 -m pip install --upgrade pip setuptools wheel
+          py -3.12 -m pip install aider-chat
+          py -3.12 -m aider --version
+
+      - name: Review proposal (read-only) and post Issue comment
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Continue"
+          chcp 65001 | Out-Null
+
+          $promptPath = "$env:RUNNER_TEMP\qwen-review-prompt.txt"
+          @"
+          あなたは経験豊富なソフトウェアアーキテクト兼レビュアーです。3人のAIレビュアー
+          (Claude Code・Codex・qwen(あなた))の1人として、Issue #$env:ISSUE_NUMBER の
+          OpenSpec提案 openspec/changes/$env:CHANGE_NAME/ をラウンド$env:ROUNDとして
+          レビューしてください(他の2人はClaude CodeとCodexです)。
+
+          proposal.md・design.md・tasks.md・specs/*/spec.md(存在する場合)を読み直した
+          うえで、以下の観点で精査してください:
+
+          1. 整合性: openspec/specs/ 配下の既存仕様、openwiki/ 配下の現状実装・アーキテク
+             チャと矛盾していないか
+          2. 過不足: 要求として抜け漏れている観点、逆に不要・重複した記述がないか
+          3. 設計判断の妥当性: design.md の Decisions が妥当か、検討すべき代替案が見落と
+             されていないか
+          4. 実現可能性: tasks.md のタスク分解が粒度・順序として実装可能か
+          5. 影響範囲: 破壊的変更や既存機能への影響が明記されているか
+          6. リポジトリ固有の規約: 該当する場合、.claude/skills/ 配下の関連スキル
+             (tauri-rust-conventions・interview-support-domain・branch-release-strategy等)
+             の方針と矛盾していないか
+
+          ファイルは一切編集せず、指摘のみをテキストで報告してください。回答は日本語で
+          記述してください。
+
+          回答の最後に、次のいずれか一行のみを一字一句そのまま記載してください:
+          "VERDICT: AGREE"(提案が現状のまま人間のレビューに進める状態である場合)
+          "VERDICT: REQUEST_CHANGES"(まだ修正が必要と考える場合。理由を上に記述する)
+          "@ | Set-Content -Path $promptPath -Encoding utf8
+
+          # If the local LM Studio instance is down or Aider throws for any
+          # other reason, don't fail the job -- fall back to a
+          # REQUEST_CHANGES comment so `synthesize` isn't blocked forever
+          # waiting on a comment that will never arrive.
+          $review = ""
+          try {
+            $review = (py -3.12 -m aider --model lm_studio/qwen3.6-35b-a3b-mtp --message-file $promptPath --yes --no-auto-commits --no-stream 2>&1 | Out-String)
+          } catch {
+            Write-Host "qwen/Aider invocation threw an exception this round: $_"
+            $review = "(このラウンドではqwen/Aiderの実行に失敗しました: $_)`nVERDICT: REQUEST_CHANGES"
+          }
+
+          $commentPath = "$env:RUNNER_TEMP\comment-body.md"
+          @"
+          <!-- ai-review round=$env:ROUND agent=qwen issue=$env:ISSUE_NUMBER -->
+          $review
+          "@ | Set-Content -Path $commentPath -Encoding utf8
+
+          gh issue comment $env:ISSUE_NUMBER --body-file $commentPath
+
+  # ---------------------------------------------------------------------
+  # Collect this round's 3 comments; either finish or push the next round
+  # ---------------------------------------------------------------------
+
+  synthesize:
+    needs: [determine-round, claude-review, codex-review, qwen-review]
+    if: always() && needs.determine-round.outputs.proceed == 'true'
+    runs-on: [self-hosted, Windows, X64]
+    outputs:
+      terminal: ${{ steps.decide.outputs.terminal }}
+      consensus: ${{ steps.decide.outputs.consensus }}
+    env:
+      ISSUE_NUMBER: ${{ needs.determine-round.outputs.issue_number }}
+      CHANGE_NAME: ${{ needs.determine-round.outputs.change_name }}
+      ROUND: ${{ needs.determine-round.outputs.round }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Check out spec branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Collect this round's 3 review comments and decide
+        id: decide
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Continue"
+          $repo = $env:GITHUB_REPOSITORY
+          $headers = @{
+            Authorization = "Bearer $env:GH_TOKEN"
+            Accept        = "application/vnd.github+json"
+          }
+
+          $comments = Invoke-RestMethod -Headers $headers `
+            -Uri "https://api.github.com/repos/$repo/issues/$env:ISSUE_NUMBER/comments?per_page=100"
+
+          $agents = "claude", "codex", "qwen"
+          $found = @{}
+          foreach ($agent in $agents) {
+            $marker = "<!-- ai-review round=$env:ROUND agent=$agent issue=$env:ISSUE_NUMBER -->"
+            $match = $comments | Where-Object { $_.body -like "$marker*" } | Select-Object -Last 1
+            if ($match) { $found[$agent] = $match.body }
+          }
+
+          if ($found.Count -lt 3) {
+            $missing = $agents | Where-Object { -not $found.ContainsKey($_) }
+            $msg = "ラウンド $env:ROUND: 次のレビュアーからのコメントが見つかりませんでした: $($missing -join ', ')。自動集約を停止します。手動で確認してください。"
+            gh issue comment $env:ISSUE_NUMBER --body $msg
+            echo "terminal=true" >> $env:GITHUB_OUTPUT
+            echo "consensus=false" >> $env:GITHUB_OUTPUT
+            exit 0
+          }
+
+          # Reasoning models can mention both VERDICT phrases while thinking
+          # out loud, so take the LAST match, not any substring hit.
+          function Get-Verdict($text) {
+            $verdictMatches = [regex]::Matches($text, "VERDICT:\s*(AGREE|REQUEST_CHANGES)")
+            if ($verdictMatches.Count -eq 0) { return "REQUEST_CHANGES" }
+            return $verdictMatches[$verdictMatches.Count - 1].Groups[1].Value
+          }
+
+          $verdicts = @{}
+          foreach ($agent in $agents) { $verdicts[$agent] = Get-Verdict $found[$agent] }
+          $allAgree = ($verdicts.Values | Where-Object { $_ -ne "AGREE" }).Count -eq 0
+
+          if ($allAgree) {
+            Write-Host "Round $env:ROUND: all 3 AI reviewers agree."
+            echo "terminal=true" >> $env:GITHUB_OUTPUT
+            echo "consensus=true" >> $env:GITHUB_OUTPUT
+            exit 0
+          }
+
+          if ([int]$env:ROUND -ge 3) {
+            Write-Host "Round $env:ROUND: no consensus, and round cap reached."
+            echo "terminal=true" >> $env:GITHUB_OUTPUT
+            echo "consensus=false" >> $env:GITHUB_OUTPUT
+            exit 0
+          }
+
+          # Not yet 3, and not all agree: have Claude Code fold all 3
+          # reviews into the proposal and push. That push re-triggers this
+          # workflow for the next round.
+          $promptPath = "$env:RUNNER_TEMP\claude-synth-prompt.txt"
+          @"
+          Issue #$env:ISSUE_NUMBER の OpenSpec 提案
+          openspec/changes/$env:CHANGE_NAME/ について、3人のAIレビュアー(Claude Code・
+          Codex・qwen(Aider経由のローカルLLM))が別々のGitHub Actionsジョブでラウンド
+          $env:ROUND のレビューを行い、それぞれ指摘をIssueコメントとして投稿しました。
+          各レビュアーの全文は以下の通りです:
+
+          --- Claude Code ---
+          $($found["claude"])
+
+          --- Codex ---
+          $($found["codex"])
+
+          --- qwen (Aider) ---
+          $($found["qwen"])
+
+          上記のコメントだけに頼らず、openspec/changes/$env:CHANGE_NAME/ 配下の
+          proposal.md・design.md・tasks.md・specs/*/spec.md(存在する場合)を自分で
+          読み直したうえで、3人のうち妥当だと判断した指摘を提案ファイルに反映してくだ
+          さい。指摘が的外れ、または既に対応済みの場合はその部分を変更しなくて構いません。
+
+          変更内容は、次の形式のコミットメッセージでコミットしてください(この
+          "AI review round <N> (synthesis): ..." という接頭辞は次ラウンドの検知に
+          使われるため、一字一句そのまま使うこと):
+          "AI review round $env:ROUND (synthesis): <変更内容の要約>"
+          (openspec/ は .gitignore 対象なので ``git add -f`` を使うこと)。push は
+          別ステップで行うので、ここでは行わないでください。
+          "@ | Set-Content -Path $promptPath -Encoding utf8
+
+          Get-Content -Raw $promptPath | claude -p --dangerously-skip-permissions
+
+          $changed = [bool](git status --porcelain)
+          if (-not $changed) {
+            Write-Host "Claude Code made no changes despite REQUEST_CHANGES feedback; treating round as terminal to avoid an infinite loop."
+            echo "terminal=true" >> $env:GITHUB_OUTPUT
+            echo "consensus=false" >> $env:GITHUB_OUTPUT
+            exit 0
+          }
+
+          git push origin "HEAD:refs/heads/spec/$env:ISSUE_NUMBER"
+          echo "terminal=false" >> $env:GITHUB_OUTPUT
+          echo "consensus=false" >> $env:GITHUB_OUTPUT
+
+  # ---------------------------------------------------------------------
+  # Terminal state (consensus or round cap): open the review-gate PR
+  # ---------------------------------------------------------------------
+
+  create-pr:
+    needs: [determine-round, synthesize]
+    if: needs.synthesize.outputs.terminal == 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      pr_url: ${{ steps.create.outputs.pr_url }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+      ISSUE_NUMBER: ${{ needs.determine-round.outputs.issue_number }}
+      CHANGE_NAME: ${{ needs.determine-round.outputs.change_name }}
+      ROUND: ${{ needs.determine-round.outputs.round }}
+      CONSENSUS: ${{ needs.synthesize.outputs.consensus }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Create review-gate PR (if one doesn't already exist)
+        id: create
+        run: |
+          existing="$(gh pr list --head "spec/$ISSUE_NUMBER" --base main --state open --json url --jq '.[0].url')"
+          if [ -n "$existing" ]; then
+            echo "PR already exists: $existing"
+            echo "pr_url=$existing" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          bodyFile="$(mktemp)"
+          {
+            echo "Issue #$ISSUE_NUMBER に関連"
+            echo ""
+            if [ "$CONSENSUS" = "true" ]; then
+              echo "OpenSpec提案 \`$CHANGE_NAME\` をClaude Code・Codex・qwenがレビューしました($ROUND ラウンドで合意)。"
+            else
+              echo "OpenSpec提案 \`$CHANGE_NAME\` を作成しましたが、3人のAIレビュアーは $ROUND ラウンドを経ても合意に至りませんでした。各ラウンドのIssueコメントで理由を確認してください。"
+            fi
+            echo ""
+            echo "このPRはレビューゲートであり、自動マージはされません。承認は次のdevフェーズへ進んでよいという合図です(docs/仕様/Issue駆動開発フロー.md §4.5〜4.6参照)。"
+          } > "$bodyFile"
+
+          url="$(gh pr create --base main --head "spec/$ISSUE_NUMBER" \
+            --title "Issue #$ISSUE_NUMBER: specフェーズのレビュー準備完了 ($CHANGE_NAME)" \
+            --body-file "$bodyFile")"
+          echo "pr_url=$url" >> "$GITHUB_OUTPUT"
+
+  comment:
+    needs: [determine-round, synthesize, create-pr]
+    if: always() && needs.synthesize.outputs.terminal == 'true'
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Comment on the issue
+        run: |
+          issue_number="${{ needs.determine-round.outputs.issue_number }}"
+          round="${{ needs.determine-round.outputs.round }}"
+          consensus="${{ needs.synthesize.outputs.consensus }}"
+          pr_url="${{ needs.create-pr.outputs.pr_url }}"
+
+          if [ "$consensus" = "true" ]; then
+            body="specフェーズのレビューが完了しました: $round ラウンドで合意に達しました。PR: $pr_url"
+          else
+            body="specフェーズのレビューが完了しました: $round ラウンドを経ても合意に至りませんでした(各ラウンドのコメントを参照)。PR: $pr_url"
+          fi
+
+          gh issue comment "$issue_number" --body "$body"
