@@ -198,22 +198,31 @@ jobs:
         run: |
           promptFile="$(mktemp)"
           cat > "$promptFile" <<EOF
-          You are one of three AI reviewers (the others are Codex and a local
-          LLM running via Aider) reviewing the OpenSpec proposal at
-          openspec/changes/$CHANGE_NAME/ for Issue #$ISSUE_NUMBER, round
-          $ROUND.
+          あなたは経験豊富なソフトウェアアーキテクト兼レビュアーです。3人のAIレビュアー
+          (Claude Code・Codex・qwen(ローカルLLM))の1人として、Issue #$ISSUE_NUMBER の
+          OpenSpec提案 openspec/changes/$CHANGE_NAME/ をラウンド$ROUNDとしてレビューして
+          ください(他の2人はCodexとqwenです)。
 
-          Re-read the current proposal.md, design.md, tasks.md, and any
-          specs/*/spec.md under openspec/changes/$CHANGE_NAME/.
-          Cross-reference openwiki/ and openspec/specs/ for the current
-          implementation. Do NOT edit any files -- only report your findings
-          as text.
+          proposal.md・design.md・tasks.md・specs/*/spec.md(存在する場合)を読み直した
+          うえで、以下の観点で精査してください:
 
-          End your response with exactly one line, verbatim:
-          "VERDICT: AGREE" if the proposal as it now stands is ready to move
-          to human review, or "VERDICT: REQUEST_CHANGES" (with your
-          reasoning above it) if you believe further changes are still
-          needed.
+          1. 整合性: openspec/specs/ 配下の既存仕様、openwiki/ 配下の現状実装・アーキテク
+             チャと矛盾していないか
+          2. 過不足: 要求として抜け漏れている観点、逆に不要・重複した記述がないか
+          3. 設計判断の妥当性: design.md の Decisions が妥当か、検討すべき代替案が見落と
+             されていないか
+          4. 実現可能性: tasks.md のタスク分解が粒度・順序として実装可能か
+          5. 影響範囲: 破壊的変更や既存機能への影響が明記されているか
+          6. リポジトリ固有の規約: 該当する場合、.claude/skills/ 配下の関連スキル
+             (tauri-rust-conventions・interview-support-domain・branch-release-strategy等)
+             の方針と矛盾していないか
+
+          ファイルは一切編集せず、指摘のみをテキストで報告してください。回答は日本語で
+          記述してください。
+
+          回答の最後に、次のいずれか一行のみを一字一句そのまま記載してください:
+          "VERDICT: AGREE"(提案が現状のまま人間のレビューに進める状態である場合)
+          "VERDICT: REQUEST_CHANGES"(まだ修正が必要と考える場合。理由を上に記述する)
           EOF
 
           reviewFile="$(mktemp)"
@@ -255,22 +264,31 @@ jobs:
         run: |
           promptFile="$(mktemp)"
           cat > "$promptFile" <<EOF
-          You are one of three AI reviewers (the others are Claude Code and a
-          local LLM running via Aider) reviewing the OpenSpec proposal at
-          openspec/changes/$CHANGE_NAME/ for Issue #$ISSUE_NUMBER, round
-          $ROUND.
+          あなたは経験豊富なソフトウェアアーキテクト兼レビュアーです。3人のAIレビュアー
+          (Claude Code・Codex・qwen(ローカルLLM))の1人として、Issue #$ISSUE_NUMBER の
+          OpenSpec提案 openspec/changes/$CHANGE_NAME/ をラウンド$ROUNDとしてレビューして
+          ください(他の2人はClaude Codeとqwenです)。
 
-          Re-read the current proposal.md, design.md, tasks.md, and any
-          specs/*/spec.md under openspec/changes/$CHANGE_NAME/.
-          Cross-reference openwiki/ and openspec/specs/ for the current
-          implementation. Do NOT edit any files -- only report your findings
-          as text.
+          proposal.md・design.md・tasks.md・specs/*/spec.md(存在する場合)を読み直した
+          うえで、以下の観点で精査してください:
 
-          End your response with exactly one line, verbatim:
-          "VERDICT: AGREE" if the proposal as it now stands is ready to move
-          to human review, or "VERDICT: REQUEST_CHANGES" (with your
-          reasoning above it) if you believe further changes are still
-          needed.
+          1. 整合性: openspec/specs/ 配下の既存仕様、openwiki/ 配下の現状実装・アーキテク
+             チャと矛盾していないか
+          2. 過不足: 要求として抜け漏れている観点、逆に不要・重複した記述がないか
+          3. 設計判断の妥当性: design.md の Decisions が妥当か、検討すべき代替案が見落と
+             されていないか
+          4. 実現可能性: tasks.md のタスク分解が粒度・順序として実装可能か
+          5. 影響範囲: 破壊的変更や既存機能への影響が明記されているか
+          6. リポジトリ固有の規約: 該当する場合、.claude/skills/ 配下の関連スキル
+             (tauri-rust-conventions・interview-support-domain・branch-release-strategy等)
+             の方針と矛盾していないか
+
+          ファイルは一切編集せず、指摘のみをテキストで報告してください。回答は日本語で
+          記述してください。
+
+          回答の最後に、次のいずれか一行のみを一字一句そのまま記載してください:
+          "VERDICT: AGREE"(提案が現状のまま人間のレビューに進める状態である場合)
+          "VERDICT: REQUEST_CHANGES"(まだ修正が必要と考える場合。理由を上に記述する)
           EOF
 
           reviewFile="$(mktemp)"
@@ -320,22 +338,31 @@ jobs:
 
           $promptPath = "$env:RUNNER_TEMP\qwen-review-prompt.txt"
           @"
-          You are one of three AI reviewers (the others are Claude Code and
-          Codex) reviewing the OpenSpec proposal at
-          openspec/changes/$env:CHANGE_NAME/ for Issue #$env:ISSUE_NUMBER,
-          round $env:ROUND.
+          あなたは経験豊富なソフトウェアアーキテクト兼レビュアーです。3人のAIレビュアー
+          (Claude Code・Codex・qwen(あなた))の1人として、Issue #$env:ISSUE_NUMBER の
+          OpenSpec提案 openspec/changes/$env:CHANGE_NAME/ をラウンド$env:ROUNDとして
+          レビューしてください(他の2人はClaude CodeとCodexです)。
 
-          Re-read the current proposal.md, design.md, tasks.md, and any
-          specs/*/spec.md under openspec/changes/$env:CHANGE_NAME/.
-          Cross-reference openwiki/ and openspec/specs/ for the current
-          implementation. Do NOT edit any files -- only report your findings
-          as text.
+          proposal.md・design.md・tasks.md・specs/*/spec.md(存在する場合)を読み直した
+          うえで、以下の観点で精査してください:
 
-          End your response with exactly one line, verbatim:
-          "VERDICT: AGREE" if the proposal as it now stands is ready to move
-          to human review, or "VERDICT: REQUEST_CHANGES" (with your
-          reasoning above it) if you believe further changes are still
-          needed.
+          1. 整合性: openspec/specs/ 配下の既存仕様、openwiki/ 配下の現状実装・アーキテク
+             チャと矛盾していないか
+          2. 過不足: 要求として抜け漏れている観点、逆に不要・重複した記述がないか
+          3. 設計判断の妥当性: design.md の Decisions が妥当か、検討すべき代替案が見落と
+             されていないか
+          4. 実現可能性: tasks.md のタスク分解が粒度・順序として実装可能か
+          5. 影響範囲: 破壊的変更や既存機能への影響が明記されているか
+          6. リポジトリ固有の規約: 該当する場合、.claude/skills/ 配下の関連スキル
+             (tauri-rust-conventions・interview-support-domain・branch-release-strategy等)
+             の方針と矛盾していないか
+
+          ファイルは一切編集せず、指摘のみをテキストで報告してください。回答は日本語で
+          記述してください。
+
+          回答の最後に、次のいずれか一行のみを一字一句そのまま記載してください:
+          "VERDICT: AGREE"(提案が現状のまま人間のレビューに進める状態である場合)
+          "VERDICT: REQUEST_CHANGES"(まだ修正が必要と考える場合。理由を上に記述する)
           "@ | Set-Content -Path $promptPath -Encoding utf8
 
           # If the local LM Studio instance is down or Aider throws for any
@@ -347,7 +374,7 @@ jobs:
             $review = (py -3.12 -m aider --model lm_studio/qwen3.6-35b-a3b-mtp --message-file $promptPath --yes --no-auto-commits --no-stream 2>&1 | Out-String)
           } catch {
             Write-Host "qwen/Aider invocation threw an exception this round: $_"
-            $review = "(qwen/Aider failed to run this round: $_)`nVERDICT: REQUEST_CHANGES"
+            $review = "(このラウンドではqwen/Aiderの実行に失敗しました: $_)`nVERDICT: REQUEST_CHANGES"
           }
 
           $commentPath = "$env:RUNNER_TEMP\comment-body.md"
@@ -402,7 +429,7 @@ jobs:
 
           if ($found.Count -lt 3) {
             $missing = $agents | Where-Object { -not $found.ContainsKey($_) }
-            $msg = "Round $env:ROUND: missing review comment(s) from: $($missing -join ', '). Stopping automatic synthesis -- please review manually."
+            $msg = "ラウンド $env:ROUND: 次のレビュアーからのコメントが見つかりませんでした: $($missing -join ', ')。自動集約を停止します。手動で確認してください。"
             gh issue comment $env:ISSUE_NUMBER --body $msg
             echo "terminal=true" >> $env:GITHUB_OUTPUT
             echo "consensus=false" >> $env:GITHUB_OUTPUT
@@ -440,12 +467,11 @@ jobs:
           # workflow for the next round.
           $promptPath = "$env:RUNNER_TEMP\claude-synth-prompt.txt"
           @"
-          You already know this repository's OpenSpec proposal at
-          openspec/changes/$env:CHANGE_NAME/ for Issue #$env:ISSUE_NUMBER.
-          Three AI reviewers (Claude Code, Codex, and a local LLM via Aider)
-          just reviewed round $env:ROUND of this proposal via separate GitHub
-          Actions jobs and posted their feedback as Issue comments. Their
-          full comments:
+          Issue #$env:ISSUE_NUMBER の OpenSpec 提案
+          openspec/changes/$env:CHANGE_NAME/ について、3人のAIレビュアー(Claude Code・
+          Codex・qwen(Aider経由のローカルLLM))が別々のGitHub Actionsジョブでラウンド
+          $env:ROUND のレビューを行い、それぞれ指摘をIssueコメントとして投稿しました。
+          各レビュアーの全文は以下の通りです:
 
           --- Claude Code ---
           $($found["claude"])
@@ -456,17 +482,17 @@ jobs:
           --- qwen (Aider) ---
           $($found["qwen"])
 
-          Re-read the current proposal.md, design.md, tasks.md, and any
-          specs/*/spec.md under openspec/changes/$env:CHANGE_NAME/ yourself
-          (don't rely solely on the comments above). Apply whatever changes
-          are needed to address real, valid feedback from any of the three
-          reviewers. If a reviewer's point doesn't apply or is already
-          addressed, it's fine to leave that part unchanged.
+          上記のコメントだけに頼らず、openspec/changes/$env:CHANGE_NAME/ 配下の
+          proposal.md・design.md・tasks.md・specs/*/spec.md(存在する場合)を自分で
+          読み直したうえで、3人のうち妥当だと判断した指摘を提案ファイルに反映してくだ
+          さい。指摘が的外れ、または既に対応済みの場合はその部分を変更しなくて構いません。
 
-          Commit your changes with the exact message
-          "AI review round $env:ROUND (synthesis): <short summary>"
-          (openspec/ is gitignored, so use ``git add -f``). Do not push --
-          that is handled separately.
+          変更内容は、次の形式のコミットメッセージでコミットしてください(この
+          "AI review round <N> (synthesis): ..." という接頭辞は次ラウンドの検知に
+          使われるため、一字一句そのまま使うこと):
+          "AI review round $env:ROUND (synthesis): <変更内容の要約>"
+          (openspec/ は .gitignore 対象なので ``git add -f`` を使うこと)。push は
+          別ステップで行うので、ここでは行わないでください。
           "@ | Set-Content -Path $promptPath -Encoding utf8
 
           Get-Content -Raw $promptPath | claude -p --dangerously-skip-permissions
@@ -515,19 +541,19 @@ jobs:
 
           bodyFile="$(mktemp)"
           {
-            echo "Relates to #$ISSUE_NUMBER"
+            echo "Issue #$ISSUE_NUMBER に関連"
             echo ""
             if [ "$CONSENSUS" = "true" ]; then
-              echo "OpenSpec proposal \`$CHANGE_NAME\` reviewed by Claude Code, Codex, and qwen (consensus reached after $ROUND round(s))."
+              echo "OpenSpec提案 \`$CHANGE_NAME\` をClaude Code・Codex・qwenがレビューしました($ROUND ラウンドで合意)。"
             else
-              echo "OpenSpec proposal \`$CHANGE_NAME\` drafted, but the three AI reviewers did not reach consensus after $ROUND round(s). Check each round's Issue comments for their reasoning."
+              echo "OpenSpec提案 \`$CHANGE_NAME\` を作成しましたが、3人のAIレビュアーは $ROUND ラウンドを経ても合意に至りませんでした。各ラウンドのIssueコメントで理由を確認してください。"
             fi
             echo ""
-            echo "This PR is a review gate only -- it is not auto-merged. Approving it is the signal to move on to the dev phase (see docs/仕様/Issue駆動開発フロー.md §4.5〜4.6)."
+            echo "このPRはレビューゲートであり、自動マージはされません。承認は次のdevフェーズへ進んでよいという合図です(docs/仕様/Issue駆動開発フロー.md §4.5〜4.6参照)。"
           } > "$bodyFile"
 
           url="$(gh pr create --base main --head "spec/$ISSUE_NUMBER" \
-            --title "Issue #$ISSUE_NUMBER: spec phase ready for review ($CHANGE_NAME)" \
+            --title "Issue #$ISSUE_NUMBER: specフェーズのレビュー準備完了 ($CHANGE_NAME)" \
             --body-file "$bodyFile")"
           echo "pr_url=$url" >> "$GITHUB_OUTPUT"
 
@@ -546,9 +572,9 @@ jobs:
           pr_url="${{ needs.create-pr.outputs.pr_url }}"
 
           if [ "$consensus" = "true" ]; then
-            body="Spec phase review complete: consensus reached after $round round(s). PR: $pr_url"
+            body="specフェーズのレビューが完了しました: $round ラウンドで合意に達しました。PR: $pr_url"
           else
-            body="Spec phase review complete: no consensus after $round round(s) (see each round's comments above for details). PR: $pr_url"
+            body="specフェーズのレビューが完了しました: $round ラウンドを経ても合意に至りませんでした(各ラウンドのコメントを参照)。PR: $pr_url"
           fi
 
           gh issue comment "$issue_number" --body "$body"
