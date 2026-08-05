@@ -449,7 +449,7 @@ jobs:
 
           if ($found.Count -lt $agents.Count) {
             $missing = $agents | Where-Object { -not $found.ContainsKey($_) }
-            $msg = "ラウンド $env:ROUND: 次のレビュアーからのコメントが見つかりませんでした: $($missing -join ', ')。自動集約を停止します。手動で確認してください。"
+            $msg = "ラウンド ${env:ROUND}: 次のレビュアーからのコメントが見つかりませんでした: $($missing -join ', ')。自動集約を停止します。手動で確認してください。"
             gh issue comment $env:ISSUE_NUMBER --body $msg
             echo "terminal=true" >> $env:GITHUB_OUTPUT
             echo "consensus=false" >> $env:GITHUB_OUTPUT
@@ -469,14 +469,14 @@ jobs:
           $allAgree = ($verdicts.Values | Where-Object { $_ -ne "AGREE" }).Count -eq 0
 
           if ($allAgree) {
-            Write-Host "Round $env:ROUND: all AI reviewers agree."
+            Write-Host "Round ${env:ROUND}: all AI reviewers agree."
             echo "terminal=true" >> $env:GITHUB_OUTPUT
             echo "consensus=true" >> $env:GITHUB_OUTPUT
             exit 0
           }
 
           if ([int]$env:ROUND -ge 3) {
-            Write-Host "Round $env:ROUND: no consensus, and round cap reached."
+            Write-Host "Round ${env:ROUND}: no consensus, and round cap reached."
             echo "terminal=true" >> $env:GITHUB_OUTPUT
             echo "consensus=false" >> $env:GITHUB_OUTPUT
             exit 0
@@ -539,7 +539,11 @@ jobs:
 
   create-pr:
     needs: [determine-round, synthesize]
-    if: needs.synthesize.outputs.terminal == 'true'
+    # always() is required here: without it, this job was observed to be
+    # skipped even when terminal == 'true' (reproduced twice on issue #16),
+    # while the `comment` job below -- which already uses always() -- read
+    # the same output correctly both times.
+    if: always() && needs.synthesize.outputs.terminal == 'true'
     runs-on: ubuntu-latest
     outputs:
       pr_url: ${{ steps.create.outputs.pr_url }}
