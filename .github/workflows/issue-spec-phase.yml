@@ -165,9 +165,14 @@ jobs:
 
           # Round N's review happens on the content produced by round N-1's
           # synthesis commit (or the initial proposal, for round 1). Counting
-          # past synthesis commits and adding 1 gives the round that is about
-          # to run -- no separate state file needed.
-          past_rounds="$(git log --oneline --grep='^AI review round ' | wc -l | tr -d ' ')"
+          # past synthesis commits for *this issue* and adding 1 gives the
+          # round that is about to run -- no separate state file needed. The
+          # grep is scoped to this issue's number (not just the
+          # "AI review round " prefix) because main -- and therefore every
+          # spec/<N> branch cut from it -- can already contain synthesis
+          # commits from earlier issues' spec phases, which would otherwise
+          # inflate the count.
+          past_rounds="$(git log --oneline --grep="(synthesis, issue #${issue_number}):" | wc -l | tr -d ' ')"
           round=$((past_rounds + 1))
           echo "round=$round" >> "$GITHUB_OUTPUT"
 
@@ -498,9 +503,9 @@ jobs:
           さい。指摘が的外れ、または既に対応済みの場合はその部分を変更しなくて構いません。
 
           変更内容は、次の形式のコミットメッセージでコミットしてください(この
-          "AI review round <N> (synthesis): ..." という接頭辞は次ラウンドの検知に
-          使われるため、一字一句そのまま使うこと):
-          "AI review round $env:ROUND (synthesis): <変更内容の要約>"
+          "AI review round <N> (synthesis, issue #<M>): ..." という接頭辞は次ラウンド
+          の検知に使われるため、一字一句そのまま使うこと):
+          "AI review round $env:ROUND (synthesis, issue #$env:ISSUE_NUMBER): <変更内容の要約>"
           (openspec/ は .gitignore 対象なので ``git add -f`` を使うこと)。push は
           別ステップで行うので、ここでは行わないでください。
           "@ | Set-Content -Path $promptPath -Encoding utf8
