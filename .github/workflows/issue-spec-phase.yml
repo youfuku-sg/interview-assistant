@@ -56,6 +56,10 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ needs.create-branch.outputs.branch }}
+          # GITHUB_TOKEN pushes don't trigger other workflow runs (loop
+          # prevention), so the push below -- which must fire the
+          # `push: branches: spec/**` trigger -- needs a PAT instead.
+          token: ${{ secrets.GH_WORKFLOW_PAT }}
 
       - name: Create OpenSpec proposal with Claude Code
         shell: powershell
@@ -404,6 +408,12 @@ jobs:
     steps:
       - name: Check out spec branch
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          # GITHUB_TOKEN pushes don't trigger other workflow runs (loop
+          # prevention), so the push below -- which must fire the
+          # `push: branches: spec/**` trigger for the next round -- needs a
+          # PAT instead.
+          token: ${{ secrets.GH_WORKFLOW_PAT }}
 
       - name: Collect this round's 3 review comments and decide
         id: decide
