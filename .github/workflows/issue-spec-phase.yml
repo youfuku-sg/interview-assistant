@@ -62,7 +62,7 @@ jobs:
           token: ${{ secrets.GH_WORKFLOW_PAT }}
 
       - name: Create OpenSpec proposal with Claude Code
-        shell: powershell
+        shell: pwsh
         env:
           ISSUE_NUMBER: ${{ github.event.issue.number }}
         run: |
@@ -118,7 +118,7 @@ jobs:
           Get-Content $statusFilePath
 
       - name: Push proposal commit (if any)
-        shell: powershell
+        shell: pwsh
         run: |
           $statusFilePath = "$env:RUNNER_TEMP\claude-propose-status.txt"
           $status = (Get-Content $statusFilePath -Raw).Trim()
@@ -332,7 +332,7 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Ensure Aider (Python 3.12) is available
-        shell: powershell
+        shell: pwsh
         run: |
           winget install --id Python.Python.3.12 -e --silent --accept-package-agreements --accept-source-agreements
           py -3.12 -m pip install --upgrade pip setuptools wheel
@@ -340,7 +340,7 @@ jobs:
           py -3.12 -m aider --version
 
       - name: Review proposal (read-only) and post Issue comment
-        shell: powershell
+        shell: pwsh
         run: |
           $ErrorActionPreference = "Continue"
           chcp 65001 | Out-Null
@@ -422,7 +422,7 @@ jobs:
 
       - name: Collect this round's 3 review comments and decide
         id: decide
-        shell: powershell
+        shell: pwsh
         run: |
           $ErrorActionPreference = "Continue"
           $repo = $env:GITHUB_REPOSITORY
