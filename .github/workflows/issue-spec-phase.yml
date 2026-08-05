@@ -380,7 +380,7 @@ jobs:
           # waiting on a comment that will never arrive.
           $review = ""
           try {
-            $review = (py -3.12 -m aider --model lm_studio/qwen3.6-35b-a3b-mtp --message-file $promptPath --yes --no-auto-commits --no-stream 2>&1 | Out-String)
+            $review = (py -3.12 -m aider --model lm_studio/google/gemma-4-12b --message-file $promptPath --yes --no-auto-commits --no-stream 2>&1 | Out-String)
           } catch {
             Write-Host "qwen/Aider invocation threw an exception this round: $_"
             $review = "(このラウンドではqwen/Aiderの実行に失敗しました: $_)`nVERDICT: REQUEST_CHANGES"
