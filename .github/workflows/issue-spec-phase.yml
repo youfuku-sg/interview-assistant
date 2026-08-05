@@ -512,9 +512,16 @@ jobs:
           別ステップで行うので、ここでは行わないでください。
           "@ | Set-Content -Path $promptPath -Encoding utf8
 
+          $beforeSha = (git rev-parse HEAD).Trim()
           Get-Content -Raw $promptPath | claude -p --dangerously-skip-permissions
+          $afterSha = (git rev-parse HEAD).Trim()
 
-          $changed = [bool](git status --porcelain)
+          # Claude is instructed to commit (not just edit) its changes, so a
+          # clean working tree afterward is the *expected* outcome on
+          # success -- it does NOT mean "no changes were made". Compare HEAD
+          # before/after instead of `git status --porcelain`, which can't
+          # tell "nothing changed" apart from "changes were committed".
+          $changed = $afterSha -ne $beforeSha
           if (-not $changed) {
             Write-Host "Claude Code made no changes despite REQUEST_CHANGES feedback; treating round as terminal to avoid an infinite loop."
             echo "terminal=true" >> $env:GITHUB_OUTPUT
