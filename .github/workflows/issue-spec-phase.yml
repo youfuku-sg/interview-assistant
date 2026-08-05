@@ -207,10 +207,10 @@ jobs:
         run: |
           promptFile="$(mktemp)"
           cat > "$promptFile" <<EOF
-          あなたは経験豊富なソフトウェアアーキテクト兼レビュアーです。3人のAIレビュアー
-          (Claude Code・Codex・qwen(ローカルLLM))の1人として、Issue #$ISSUE_NUMBER の
+          あなたは経験豊富なソフトウェアアーキテクト兼レビュアーです。2人のAIレビュアー
+          (Claude Code・Codex)の1人として、Issue #$ISSUE_NUMBER の
           OpenSpec提案 openspec/changes/$CHANGE_NAME/ をラウンド$ROUNDとしてレビューして
-          ください(他の2人はCodexとqwenです)。
+          ください(もう1人はCodexです)。
 
           proposal.md・design.md・tasks.md・specs/*/spec.md(存在する場合)を読み直した
           うえで、以下の観点で精査してください:
@@ -273,10 +273,10 @@ jobs:
         run: |
           promptFile="$(mktemp)"
           cat > "$promptFile" <<EOF
-          あなたは経験豊富なソフトウェアアーキテクト兼レビュアーです。3人のAIレビュアー
-          (Claude Code・Codex・qwen(ローカルLLM))の1人として、Issue #$ISSUE_NUMBER の
+          あなたは経験豊富なソフトウェアアーキテクト兼レビュアーです。2人のAIレビュアー
+          (Claude Code・Codex)の1人として、Issue #$ISSUE_NUMBER の
           OpenSpec提案 openspec/changes/$CHANGE_NAME/ をラウンド$ROUNDとしてレビューして
-          ください(他の2人はClaude Codeとqwenです)。
+          ください(もう1人はClaude Codeです)。
 
           proposal.md・design.md・tasks.md・specs/*/spec.md(存在する場合)を読み直した
           うえで、以下の観点で精査してください:
@@ -314,7 +314,10 @@ jobs:
 
   qwen-review:
     needs: determine-round
-    if: needs.determine-round.outputs.proceed == 'true'
+    # Disabled: the local LM Studio reviewer has been unreliable (hangs for
+    # 10+ minutes, sometimes indefinitely) and is blocking the spec phase.
+    # Re-enable by restoring the proceed check below once that's resolved.
+    if: false && needs.determine-round.outputs.proceed == 'true'
     # Needs to reach the user's own LM Studio instance at localhost:1234, so
     # this job cannot run on a GitHub-hosted runner.
     runs-on: [self-hosted, Windows, X64]
@@ -434,7 +437,9 @@ jobs:
           $comments = Invoke-RestMethod -Headers $headers `
             -Uri "https://api.github.com/repos/$repo/issues/$env:ISSUE_NUMBER/comments?per_page=100"
 
-          $agents = "claude", "codex", "qwen"
+          # qwen (local LM Studio reviewer) is temporarily disabled -- see
+          # qwen-review's `if: false`. Restore it here when re-enabled.
+          $agents = "claude", "codex"
           $found = @{}
           foreach ($agent in $agents) {
             $marker = "<!-- ai-review round=$env:ROUND agent=$agent issue=$env:ISSUE_NUMBER -->"
@@ -442,7 +447,7 @@ jobs:
             if ($match) { $found[$agent] = $match.body }
           }
 
-          if ($found.Count -lt 3) {
+          if ($found.Count -lt $agents.Count) {
             $missing = $agents | Where-Object { -not $found.ContainsKey($_) }
             $msg = "ラウンド $env:ROUND: 次のレビュアーからのコメントが見つかりませんでした: $($missing -join ', ')。自動集約を停止します。手動で確認してください。"
             gh issue comment $env:ISSUE_NUMBER --body $msg
@@ -464,7 +469,7 @@ jobs:
           $allAgree = ($verdicts.Values | Where-Object { $_ -ne "AGREE" }).Count -eq 0
 
           if ($allAgree) {
-            Write-Host "Round $env:ROUND: all 3 AI reviewers agree."
+            Write-Host "Round $env:ROUND: all AI reviewers agree."
             echo "terminal=true" >> $env:GITHUB_OUTPUT
             echo "consensus=true" >> $env:GITHUB_OUTPUT
             exit 0
@@ -477,16 +482,16 @@ jobs:
             exit 0
           }
 
-          # Not yet 3, and not all agree: have Claude Code fold all 3
+          # Not yet round 3, and not all agree: have Claude Code fold the
           # reviews into the proposal and push. That push re-triggers this
           # workflow for the next round.
           $promptPath = "$env:RUNNER_TEMP\claude-synth-prompt.txt"
           @"
           Issue #$env:ISSUE_NUMBER の OpenSpec 提案
-          openspec/changes/$env:CHANGE_NAME/ について、3人のAIレビュアー(Claude Code・
-          Codex・qwen(Aider経由のローカルLLM))が別々のGitHub Actionsジョブでラウンド
-          $env:ROUND のレビューを行い、それぞれ指摘をIssueコメントとして投稿しました。
-          各レビュアーの全文は以下の通りです:
+          openspec/changes/$env:CHANGE_NAME/ について、2人のAIレビュアー(Claude Code・
+          Codex)が別々のGitHub Actionsジョブでラウンド $env:ROUND のレビューを行い、
+          それぞれ指摘をIssueコメントとして投稿しました(qwen(ローカルLLM)は現在
+          一時的に無効化されています)。各レビュアーの全文は以下の通りです:
 
           --- Claude Code ---
           $($found["claude"])
@@ -494,12 +499,9 @@ jobs:
           --- Codex ---
           $($found["codex"])
 
-          --- qwen (Aider) ---
-          $($found["qwen"])
-
           上記のコメントだけに頼らず、openspec/changes/$env:CHANGE_NAME/ 配下の
           proposal.md・design.md・tasks.md・specs/*/spec.md(存在する場合)を自分で
-          読み直したうえで、3人のうち妥当だと判断した指摘を提案ファイルに反映してくだ
+          読み直したうえで、2人のうち妥当だと判断した指摘を提案ファイルに反映してくだ
           さい。指摘が的外れ、または既に対応済みの場合はその部分を変更しなくて構いません。
 
           変更内容は、次の形式のコミットメッセージでコミットしてください(この
@@ -559,9 +561,9 @@ jobs:
             echo "Issue #$ISSUE_NUMBER に関連"
             echo ""
             if [ "$CONSENSUS" = "true" ]; then
-              echo "OpenSpec提案 \`$CHANGE_NAME\` をClaude Code・Codex・qwenがレビューしました($ROUND ラウンドで合意)。"
+              echo "OpenSpec提案 \`$CHANGE_NAME\` をClaude Code・Codexがレビューしました($ROUND ラウンドで合意)。"
             else
-              echo "OpenSpec提案 \`$CHANGE_NAME\` を作成しましたが、3人のAIレビュアーは $ROUND ラウンドを経ても合意に至りませんでした。各ラウンドのIssueコメントで理由を確認してください。"
+              echo "OpenSpec提案 \`$CHANGE_NAME\` を作成しましたが、AIレビュアーは $ROUND ラウンドを経ても合意に至りませんでした。各ラウンドのIssueコメントで理由を確認してください。"
             fi
             echo ""
             echo "このPRはレビューゲートであり、自動マージはされません。承認は次のdevフェーズへ進んでよいという合図です(docs/仕様/Issue駆動開発フロー.md §4.5〜4.6参照)。"
