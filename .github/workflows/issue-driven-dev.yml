@@ -56,6 +56,7 @@ jobs:
 
   create-branch:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     outputs:
       branch: feature/${{ github.event.issue.number }}
     steps:
@@ -69,6 +70,7 @@ jobs:
   propose:
     needs: create-branch
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     outputs:
       status: ${{ steps.claude.outputs.status }}
     env:
@@ -148,6 +150,7 @@ jobs:
     needs: propose
     if: ${{ !startsWith(needs.propose.outputs.status, 'SKIP') }}
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     outputs:
       change_name: ${{ steps.findchange.outputs.change_name }}
     env:
@@ -270,6 +273,7 @@ jobs:
   implement:
     needs: review-proposal
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     outputs:
       status: ${{ steps.codex.outputs.status }}
     env:
@@ -352,6 +356,7 @@ jobs:
     needs: implement
     if: ${{ !startsWith(needs.implement.outputs.status, 'BLOCKED') }}
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     env:
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
       CODEX_AUTH_JSON: ${{ secrets.CODEX_AUTH_JSON }}
@@ -459,6 +464,7 @@ jobs:
     needs: [review-code, review-proposal, implement]
     if: always() && needs.implement.result == 'success' && !startsWith(needs.implement.outputs.status, 'BLOCKED')
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     outputs:
       build_ok: ${{ steps.build.outputs.build_ok }}
       artifact_url: ${{ steps.build.outputs.artifact_url }}
@@ -595,6 +601,7 @@ jobs:
     needs: verify
     if: always() && needs.verify.outputs.build_ok == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     env:
       GH_TOKEN: ${{ github.token }}
       ISSUE_NUMBER: ${{ github.event.issue.number }}
@@ -632,6 +639,7 @@ jobs:
     needs: [propose, review-proposal, implement, review-code, verify, pr]
     if: always() && needs.propose.result != 'skipped'
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Comment on the issue
         uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
