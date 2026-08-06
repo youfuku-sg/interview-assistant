@@ -251,7 +251,7 @@ jobs:
               git commit -m "Proposal review round $round (Claude): revise proposal for issue #$ISSUE_NUMBER" > /dev/null
             fi
 
-            codex_output="$(review_prompt "$round" "Codex" "Claude Code" "$last_note" | codex exec -s workspace-write)"
+            codex_output="$(review_prompt "$round" "Codex" "Claude Code" "$last_note" | codex exec -s danger-full-access)"
             echo "$codex_output"
             codex_verdict="$(get_verdict "$codex_output")"
             last_note="$codex_output"
@@ -351,7 +351,7 @@ jobs:
              you made either way).
           EOF
 
-          codex exec -s workspace-write < "$promptFile"
+          codex exec -s danger-full-access < "$promptFile"
 
           if [ ! -s "$statusFile" ]; then
             echo "::error::Codex did not write a status file."
@@ -450,7 +450,7 @@ jobs:
               git commit -m "Code review round $round (Claude): revise implementation for issue #$ISSUE_NUMBER" > /dev/null
             fi
 
-            codex_output="$(review_prompt "$round" "Codex" "Claude Code" "$last_note" | codex exec -s workspace-write)"
+            codex_output="$(review_prompt "$round" "Codex" "Claude Code" "$last_note" | codex exec -s danger-full-access)"
             echo "$codex_output"
             codex_verdict="$(get_verdict "$codex_output")"
             last_note="$codex_output"
