@@ -1,19 +1,21 @@
 name: Build (confirmation)
 
-# Step 4.9 of the Issue駆動開発フロー: a full Tauri build, kept separate from
-# the lightweight typecheck/lint/clippy checks in ci.yml so that a build/*
-# push (a deliberate "confirm this compiles into a real app" signal) doesn't
-# run on every feature/* commit. No release/tag is created here -- just an
-# installer artifact for manual download and verification (4.10/4.11).
+# Step 8 of the Issue駆動開発フロー (issue-driven-dev.yml's `verify` job): a
+# full Tauri build, kept separate from the lightweight typecheck/lint/clippy
+# checks in ci.yml so that a build/* push (a deliberate "confirm this
+# compiles into a real app" signal) doesn't run on every feature/* commit.
+# No release/tag is created here -- just an installer artifact for manual
+# download and verification (step 9's PR).
 
 on:
   push:
     branches:
       - "build/**"
-  # Pushes made with the automatic GITHUB_TOKEN (as the self-hosted
-  # build-confirm job does) do NOT trigger other workflow runs -- a
-  # documented GitHub Actions limitation to prevent infinite trigger loops.
-  # workflow_dispatch, called explicitly via the REST API, is the workaround.
+  # Pushes made with the automatic GITHUB_TOKEN (as issue-driven-dev.yml's
+  # `verify` job does) do NOT trigger other workflow runs -- a documented
+  # GitHub Actions limitation to prevent infinite trigger loops.
+  # workflow_dispatch, called explicitly via `gh workflow run`, is the
+  # workaround.
   workflow_dispatch:
 
 permissions:

@@ -28,35 +28,32 @@
 ```text
 main
   ↓
-spec/<Issue番号>  ……………………………… spec フェーズ（提案）
-  1. Issue 起票（要望をざっくり書く）
+  1. Issue 起票（要望をざっくり書く。ユーザーが書く）
+        ↓
+feature/<Issue番号>  ……………………………… 提案 + 実装（単一ブランチ、人間の介在なしで連続実行）
   2. 現状仕様の参照（openwiki/ を読む）
-  3. spec/<Issue番号> ブランチ作成 + OpenSpec 提案作成（Claude Code が一次作成）
-  4. AI レビュー（提案）（Claude Code・Codex・qwen が指摘を並列収集 → 順番に反映、合意までループ）
-  5. PR 作成（base=main, head=spec/<Issue番号>。人間によるレビューゲート、マージしない）
-  6. 人間レビュー・承認
-        ↓（承認後、dev/<Issue番号> を spec/<Issue番号> から分岐）
-dev/<Issue番号>  ……………………………… dev フェーズ（実装）
-  7. dev/<Issue番号> ブランチ作成 + 実装（Codex が一次実装）
-  8. AI レビュー（コード）（Claude Code・Codex・qwen が指摘を並列収集 → 順番に反映、合意までループ）
-  9. CI（typecheck / lint / clippy）
-  10. ビルド確認（AI が build/<Issue番号> へ push し、実ビルドが成功するか確認。失敗したら 7 に戻って修正、成功するまでループ）
-  11. PR 作成（base=main, head=build/<Issue番号>。人間による動作チェックゲート、マージしない）
-  12. ユーザー動作検証・承認
-  13. OpenSpec アーカイブ（`openspec-archive-change`／`/opsx:archive` で対応する change を `openspec/specs/` に反映）
-        ↓（承認後、release/<version> を最新の main から分岐し、dev/<Issue番号> をそこへ merge）
+  3. feature/<Issue番号> ブランチ作成 + OpenSpec 提案作成（Claude Code が一次作成）
+  4. AI レビュー（提案）（Claude Code・Codex が指摘を並列収集 → 順番に反映、合意までループ）
+  5. 実装（Codex が一次実装）
+  6. AI レビュー（コード）（Claude Code・Codex が指摘を並列収集 → 順番に反映、合意までループ）
+  7. CI（typecheck / lint / clippy）
+  8. ビルド確認（AI が build/<Issue番号> へ push し、実ビルドが成功するか確認。失敗したら 5 に戻って修正、成功するまでループ）
+  9. PR 作成（base=main, head=build/<Issue番号>。人間による唯一のレビューゲート＝動作チェック、マージしない）
+  10. ユーザー動作検証・承認
+  11. OpenSpec アーカイブ（`openspec-archive-change`／`/opsx:archive` で対応する change を `openspec/specs/` に反映）
+        ↓（承認後、release/<version> を最新の main から分岐し、feature/<Issue番号> をそこへ merge）
 release/v<version>  ……………………………… リリースフロー（[ブランチ・リリース戦略](ブランチ・リリース戦略.md) が正）
-  14. 最新の main から release/v<version> を分岐し、dev/<Issue番号> を merge する
-  15. package.json・src-tauri/Cargo.toml・src-tauri/tauri.conf.json のバージョンを更新する
-  16. CHANGELOG.md に対応するエントリを追記する
-  17. main へマージする（通常の git merge。squash はここまでの正式なマージ履歴を潰すため使わない）
-  18. v<version> タグを作成して push する → このタグ push が GitHub Actions を自動起動する（既存 `ci.yml` の `publish-tauri` は既に `refs/tags/*` の push で動く条件になっているため、実装変更は不要）。ビルドが自動で走り、成果物が draft release に添付される。成果物の動作確認は 11 の dev フェーズ PR で既に済んでいるため、ここでは行わない
-  19. release/v<version> ブランチを削除する
+  12. 最新の main から release/v<version> を分岐し、feature/<Issue番号> を merge する
+  13. package.json・src-tauri/Cargo.toml・src-tauri/tauri.conf.json のバージョンを更新する
+  14. CHANGELOG.md に対応するエントリを追記する
+  15. main へマージする（通常の git merge。squash はここまでの正式なマージ履歴を潰すため使わない）
+  16. v<version> タグを作成して push する → このタグ push が GitHub Actions を自動起動する（既存 `ci.yml` の `publish-tauri` は既に `refs/tags/*` の push で動く条件になっているため、実装変更は不要）。ビルドが自動で走り、成果物が draft release に添付される。成果物の動作確認は 9 の PR で既に済んでいるため、ここでは行わない
+  17. release/v<version> ブランチを削除する
   ↓
 main
 ```
 
-spec フェーズの PR（5）・dev フェーズの PR（11）はいずれも **レビューゲートであり、マージはしない**。承認は「次のブランチへ進んでよい」という合図として扱う。実際に `main` へ内容が入るのは、`release/v<version>` が上記 14〜19（詳細は [ブランチ・リリース戦略](ブランチ・リリース戦略.md) §3.4/§4/§5/§7 を正とする）を経て `main` にマージされたときのみである。
+人間が直接手を動かすのは **9 の PR レビュー（動作検証）1 箇所のみ**である。提案（3〜4）から実装・AI レビュー・CI・ビルド確認（5〜8）までは人間の承認を待たず自動で連続実行する。PR（9）は **レビューゲートであり、マージはしない**。承認は「次のステップ（OpenSpec アーカイブ・リリースフロー）へ進んでよい」という合図として扱う。実際に `main` へ内容が入るのは、`release/v<version>` が上記 12〜17（詳細は [ブランチ・リリース戦略](ブランチ・リリース戦略.md) §3.4/§4/§5/§7 を正とする）を経て `main` にマージされたときのみである。
 
 ## 4. spec フェーズ（提案）
 

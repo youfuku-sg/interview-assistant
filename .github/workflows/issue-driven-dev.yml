@@ -1,0 +1,677 @@
+name: Issue → Dev (propose, implement, build)
+
+# Implements docs/仕様/Issue駆動開発フロー.md §3 (2026-08-05 redesign): a
+# single feature/<Issue番号> branch carries a request from OpenSpec proposal
+# through implementation to a build-verification PR, with no human gate in
+# between -- the only human checkpoint is reviewing/approving that final PR
+# (step 9).
+#
+# Replaces issue-spec-phase.yml + issue-implement.yml (the earlier
+# spec/<N> -> dev/<N> two-phase design). That design required a human
+# approval step between phases with no automation to detect it (dev/<N>
+# branch creation had to be triggered manually), and split a personal-use,
+# single-maintainer project's history across two branches for little
+# benefit. It also used a parallel-jobs-then-synthesize pattern for AI
+# review rounds, re-triggering itself via `push` to advance rounds; that
+# needed a PAT (GITHUB_TOKEN pushes don't retrigger workflows), tracked
+# round numbers by grepping commit messages (which broke when older
+# unrelated commits matched the same grep pattern), and hit a reproducible
+# GitHub Actions bug where a job's `if: needs.<job>.outputs.x == 'y'`
+# condition was skipped even when the referenced output was genuinely 'y'
+# (worked around by always()) -- see the 2026-08-05 issue #16 debugging
+# session in git history for the full account.
+#
+# AI review rounds here run as a single sequential loop inside one job
+# instead: each AI's turn reviews the current diff and, if it finds real
+# issues, edits the files directly and the job commits on its behalf (see
+# review-proposal / review-code below). This mirrors the one pattern from
+# the old design that worked reliably. Chaining ordinary jobs via `needs:`
+# within a single triggered run means there is nothing to retrigger, which
+# eliminates that whole class of bug by construction.
+#
+# All jobs run on GitHub-hosted runners. No self-hosted dependency, and no
+# local LLM reviewer -- both dropped after being unreliable in practice:
+# self-hosted Windows had winget-hang / PATH / JP-locale-encoding issues,
+# and the local LM Studio (qwen via Aider) reviewer routinely took 10+
+# minutes to over an hour per review, sometimes hanging indefinitely.
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+  actions: write
+
+concurrency:
+  group: issue-dev-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  # ---------------------------------------------------------------------
+  # 1 (branch) -> 3: create feature/<N>, draft the OpenSpec proposal
+  # ---------------------------------------------------------------------
+
+  create-branch:
+    runs-on: ubuntu-latest
+    outputs:
+      branch: feature/${{ github.event.issue.number }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Create and push feature/<issue number>
+        run: |
+          git checkout -b "feature/${{ github.event.issue.number }}"
+          git push origin "feature/${{ github.event.issue.number }}"
+
+  propose:
+    needs: create-branch
+    runs-on: ubuntu-latest
+    outputs:
+      status: ${{ steps.claude.outputs.status }}
+    env:
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+      ISSUE_NUMBER: ${{ github.event.issue.number }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: feature/${{ github.event.issue.number }}
+
+      - name: Install Claude Code CLI
+        run: curl -fsSL https://claude.ai/install.sh | bash
+
+      - name: Create OpenSpec proposal with Claude Code (step 2-3)
+        id: claude
+        run: |
+          promptFile="$(mktemp)"
+          statusFile="$(mktemp)"
+          cat > "$promptFile" <<EOF
+          A new GitHub Issue (#$ISSUE_NUMBER) was just opened. Read its
+          title and body from the "issue" object in the GitHub event
+          payload JSON file at: $GITHUB_EVENT_PATH
+
+          You are already checked out on the branch created for this issue
+          (\`feature/$ISSUE_NUMBER\`). Follow this repository's documented
+          Issue駆動開発フロー (docs/仕様/Issue駆動開発フロー.md), steps
+          2-3, to turn this rough request into an OpenSpec proposal. Do the
+          following, in order:
+
+          1. Read openwiki/quickstart.md and any linked OpenWiki pages
+             relevant to this request to ground it in the current
+             implementation, architecture, and constraints.
+          2. Derive a short kebab-case description of the request from the
+             issue title/body (e.g. "improve-stt-error-handling").
+          3. Create the OpenSpec change using the openspec-propose skill /
+             process:
+             \`openspec new change "issue-$ISSUE_NUMBER-<short-description>" --goal "Issue #$ISSUE_NUMBER"\`
+             then generate proposal.md, design.md, tasks.md, and any
+             specs/<capability>/spec.md deltas required by the schema.
+             Do not implement any code changes at this stage -- only the
+             OpenSpec proposal artifacts.
+          4. Commit the new openspec/changes/<name>/ directory on the
+             current branch, with a commit message referencing the issue
+             number (openspec/ is gitignored, so use \`git add -f\`).
+          5. Write a single line to the file at $statusFile: either
+             "OK: <the exact OpenSpec change name you used>" on success, or
+             "SKIP: <reason>" if the request is too vague to turn into a
+             concrete proposal (in which case do not create any OpenSpec
+             change or commit).
+          EOF
+
+          claude -p --dangerously-skip-permissions < "$promptFile"
+
+          if [ ! -s "$statusFile" ]; then
+            echo "::error::Claude did not write a status file."
+            exit 1
+          fi
+          status="$(cat "$statusFile")"
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          echo "Status: $status"
+
+          if [[ "$status" == SKIP:* ]]; then
+            echo "Skipped: $status"
+            gh issue comment "$ISSUE_NUMBER" --body "Could not turn this into a concrete proposal: $status"
+            exit 0
+          fi
+
+          git push origin "HEAD:refs/heads/feature/$ISSUE_NUMBER"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+  # ---------------------------------------------------------------------
+  # 4: AI review (proposal) -- sequential Claude/Codex loop, max 3 rounds
+  # ---------------------------------------------------------------------
+
+  review-proposal:
+    needs: propose
+    if: ${{ !startsWith(needs.propose.outputs.status, 'SKIP') }}
+    runs-on: ubuntu-latest
+    outputs:
+      change_name: ${{ steps.findchange.outputs.change_name }}
+    env:
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+      CODEX_AUTH_JSON: ${{ secrets.CODEX_AUTH_JSON }}
+      ISSUE_NUMBER: ${{ github.event.issue.number }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: feature/${{ github.event.issue.number }}
+
+      - name: Install Claude Code CLI
+        run: curl -fsSL https://claude.ai/install.sh | bash
+
+      - name: Install Codex CLI
+        run: npm install -g @openai/codex
+
+      - name: Set up Codex auth (ChatGPT subscription login)
+        run: |
+          mkdir -p "$HOME/.codex"
+          printf '%s' "$CODEX_AUTH_JSON" > "$HOME/.codex/auth.json"
+
+      - name: Determine OpenSpec change name
+        id: findchange
+        run: |
+          change_name="$(find openspec/changes -maxdepth 1 -mindepth 1 -type d -name "issue-${ISSUE_NUMBER}-*" -printf '%f\n' | head -n1)"
+          if [ -z "$change_name" ]; then
+            echo "::error::No openspec/changes/issue-${ISSUE_NUMBER}-* directory found on feature/$ISSUE_NUMBER"
+            exit 1
+          fi
+          echo "change_name=$change_name" >> "$GITHUB_OUTPUT"
+
+      - name: Claude/Codex proposal review loop (step 4, max 3 rounds)
+        env:
+          CHANGE_NAME: ${{ steps.findchange.outputs.change_name }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          get_verdict() {
+            local last
+            last=$(grep -oE 'VERDICT:[[:space:]]*(AGREE|REQUEST_CHANGES)' <<<"$1" | tail -n1 | awk '{print $2}')
+            if [ -z "$last" ]; then echo "REQUEST_CHANGES"; else echo "$last"; fi
+          }
+
+          review_prompt() {
+            local round="$1" self="$2" other="$3" last_note="$4"
+            cat <<EOF
+          あなたは経験豊富なソフトウェアアーキテクト兼レビュアーです。2人のAIレビュアー
+          (Claude Code・Codex)の1人($self)として、Issue #$ISSUE_NUMBER のOpenSpec提案
+          openspec/changes/$CHANGE_NAME/ をラウンド${round}としてレビューしてください
+          (もう1人は$otherです)。
+
+          $( [ -n "$last_note" ] && printf '直前のレビュアーの指摘(編集済みの可能性があるので、実際の差分は自分で確認すること):\n%s\n' "$last_note" )
+
+          proposal.md・design.md・tasks.md・specs/*/spec.md(存在する場合)を読み直した
+          うえで、以下の観点で精査してください:
+          1. 整合性: openspec/specs/ 配下の既存仕様、openwiki/ 配下の現状実装・アーキテ
+             クチャと矛盾していないか
+          2. 過不足: 要求として抜け漏れている観点、逆に不要・重複した記述がないか
+          3. 設計判断の妥当性: design.md の Decisions が妥当か
+          4. 実現可能性: tasks.md のタスク分解が粒度・順序として実装可能か
+          5. 影響範囲: 破壊的変更や既存機能への影響が明記されているか
+          6. リポジトリ固有の規約: 該当する場合、.claude/skills/ 配下の関連スキルの方針
+             と矛盾していないか
+
+          問題があれば提案ファイルを直接編集してください。変更が不要ならファイルは編集
+          しないでください。回答は日本語で記述してください。
+
+          回答の最後に、次のいずれか一行のみを一字一句そのまま記載してください:
+          "VERDICT: AGREE"(提案がこのまま実装に進める状態である場合)
+          "VERDICT: REQUEST_CHANGES"(まだ修正が必要と考える場合。理由を上に記述する)
+          EOF
+          }
+
+          last_note=""
+          for round in 1 2 3; do
+            echo "=== Proposal review round $round ==="
+
+            claude_output="$(review_prompt "$round" "Claude Code" "Codex" "$last_note" | claude -p --dangerously-skip-permissions)"
+            echo "$claude_output"
+            claude_verdict="$(get_verdict "$claude_output")"
+            last_note="$claude_output"
+
+            claude_changed=false
+            if [ -n "$(git status --porcelain)" ]; then
+              claude_changed=true
+              git add -A
+              git add -f -- openspec
+              git commit -m "Proposal review round $round (Claude): revise proposal for issue #$ISSUE_NUMBER" > /dev/null
+            fi
+
+            codex_output="$(review_prompt "$round" "Codex" "Claude Code" "$last_note" | codex exec -s workspace-write)"
+            echo "$codex_output"
+            codex_verdict="$(get_verdict "$codex_output")"
+            last_note="$codex_output"
+
+            codex_changed=false
+            if [ -n "$(git status --porcelain)" ]; then
+              codex_changed=true
+              git add -A
+              git add -f -- openspec
+              git commit -m "Proposal review round $round (Codex): revise proposal for issue #$ISSUE_NUMBER" > /dev/null
+            fi
+
+            if [ "$claude_verdict" = "AGREE" ] && [ "$codex_verdict" = "AGREE" ] && [ "$claude_changed" = false ] && [ "$codex_changed" = false ]; then
+              echo "Consensus reached after round $round."
+              break
+            fi
+
+            if [ "$round" -eq 3 ]; then
+              gh issue comment "$ISSUE_NUMBER" --body "提案レビュー: 3ラウンドを経ても合意に至りませんでした。未合意のまま実装に進みます。各ラウンドの指摘は上記ワークフローログを参照してください。"
+            fi
+          done
+
+          git push origin "HEAD:refs/heads/feature/$ISSUE_NUMBER"
+
+  # ---------------------------------------------------------------------
+  # 5: implementation (Codex primary)
+  # ---------------------------------------------------------------------
+
+  implement:
+    needs: review-proposal
+    runs-on: ubuntu-latest
+    outputs:
+      status: ${{ steps.codex.outputs.status }}
+    env:
+      CODEX_AUTH_JSON: ${{ secrets.CODEX_AUTH_JSON }}
+      ISSUE_NUMBER: ${{ github.event.issue.number }}
+      CHANGE_NAME: ${{ needs.review-proposal.outputs.change_name }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: feature/${{ github.event.issue.number }}
+
+      - uses: actions/setup-node@60edb5dd545a775178f52524783378180af0d1f # v4
+        with:
+          node-version: lts/*
+
+      - name: Install frontend deps
+        run: npm ci
+
+      - name: Install Codex CLI
+        run: npm install -g @openai/codex
+
+      - name: Set up Codex auth (ChatGPT subscription login)
+        run: |
+          mkdir -p "$HOME/.codex"
+          printf '%s' "$CODEX_AUTH_JSON" > "$HOME/.codex/auth.json"
+
+      - name: Implement the OpenSpec change with Codex (step 5)
+        id: codex
+        run: |
+          promptFile="$(mktemp)"
+          statusFile="$(mktemp)"
+          cat > "$promptFile" <<EOF
+          The OpenSpec proposal for Issue #$ISSUE_NUMBER
+          (openspec/changes/$CHANGE_NAME/) has been reviewed and is ready
+          for implementation. You are checked out on feature/$ISSUE_NUMBER.
+
+          Follow this repository's documented Issue駆動開発フロー
+          (docs/仕様/Issue駆動開発フロー.md), step 5, using the
+          openspec-apply-change skill's process:
+
+          1. \`openspec status --change "$CHANGE_NAME" --json\` to see
+             progress and which artifacts contain the tasks.
+          2. \`openspec instructions apply --change "$CHANGE_NAME" --json\`
+             and read every file listed under contextFiles.
+          3. Implement each pending task, keeping changes minimal and
+             scoped to what the task describes. Mark each task's checkbox
+             (\`- [ ]\` -> \`- [x]\`) in tasks.md as you complete it.
+          4. Run \`npm run typecheck\` and \`npm run lint\`. Fix anything
+             they flag before finishing. If you touched Rust code under
+             src-tauri/, you will not be able to run cargo here (no Rust
+             toolchain on this runner) -- CI (step 7) will catch fmt/clippy
+             issues; note in your status if you touched Rust code so a
+             human knows to watch for that.
+          5. Commit your work (multiple commits are fine; commit
+             openspec/changes/$CHANGE_NAME/ with \`git add -f\` since
+             openspec/ is gitignored).
+          6. Write a single line to the file at $statusFile: "OK" if every
+             task is complete, or "BLOCKED: <reason>" if you got stuck and
+             need human input (commit whatever coherent partial progress
+             you made either way).
+          EOF
+
+          codex exec -s workspace-write < "$promptFile"
+
+          if [ ! -s "$statusFile" ]; then
+            echo "::error::Codex did not write a status file."
+            exit 1
+          fi
+          status="$(cat "$statusFile")"
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          echo "Status: $status"
+
+          git push origin "HEAD:refs/heads/feature/$ISSUE_NUMBER"
+
+  # ---------------------------------------------------------------------
+  # 6: AI review (code) -- same sequential loop pattern as step 4
+  # ---------------------------------------------------------------------
+
+  review-code:
+    needs: implement
+    if: ${{ !startsWith(needs.implement.outputs.status, 'BLOCKED') }}
+    runs-on: ubuntu-latest
+    env:
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+      CODEX_AUTH_JSON: ${{ secrets.CODEX_AUTH_JSON }}
+      ISSUE_NUMBER: ${{ github.event.issue.number }}
+      CHANGE_NAME: ${{ needs.review-proposal.outputs.change_name }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: feature/${{ github.event.issue.number }}
+
+      - name: Install Claude Code CLI
+        run: curl -fsSL https://claude.ai/install.sh | bash
+
+      - name: Install Codex CLI
+        run: npm install -g @openai/codex
+
+      - name: Set up Codex auth (ChatGPT subscription login)
+        run: |
+          mkdir -p "$HOME/.codex"
+          printf '%s' "$CODEX_AUTH_JSON" > "$HOME/.codex/auth.json"
+
+      - name: Claude/Codex code review loop (step 6, max 3 rounds)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          get_verdict() {
+            local last
+            last=$(grep -oE 'VERDICT:[[:space:]]*(AGREE|REQUEST_CHANGES)' <<<"$1" | tail -n1 | awk '{print $2}')
+            if [ -z "$last" ]; then echo "REQUEST_CHANGES"; else echo "$last"; fi
+          }
+
+          review_prompt() {
+            local round="$1" self="$2" other="$3" last_note="$4"
+            cat <<EOF
+          あなたは経験豊富なソフトウェアアーキテクト兼レビュアーです。2人のAIレビュアー
+          (Claude Code・Codex)の1人($self)として、branch feature/$ISSUE_NUMBER の
+          IMPLEMENTATION を Issue #$ISSUE_NUMBER についてラウンド${round}として
+          レビューしてください(もう1人は$otherです)。CI・ビルド確認へ進む前の最終
+          チェックです。
+
+          $( [ -n "$last_note" ] && printf '直前のレビュアーの指摘(編集済みの可能性があるので、実際の差分は自分で確認すること):\n%s\n' "$last_note" )
+
+          openspec/changes/$CHANGE_NAME/ (tasks.md, design.md, specs/*/spec.md) を
+          自分で見つけて読み、実際のコード差分を自分で確認してください
+          (\`git diff main...HEAD\`、\`git log --oneline main..HEAD\`)。実装が
+          tasks/specs と整合しているか、バグ、既存コードとの一貫性、簡略化の余地が
+          ないかを確認してください。問題があれば直接コードを編集してください。
+          変更が不要ならファイルは編集しないでください。回答は日本語で記述して
+          ください。
+
+          回答の最後に、次のいずれか一行のみを一字一句そのまま記載してください:
+          "VERDICT: AGREE"(実装がこのままCI/ビルド確認に進める状態である場合)
+          "VERDICT: REQUEST_CHANGES"(まだ修正が必要と考える場合。理由を上に記述する)
+          EOF
+          }
+
+          last_note=""
+          for round in 1 2 3; do
+            echo "=== Code review round $round ==="
+
+            claude_output="$(review_prompt "$round" "Claude Code" "Codex" "$last_note" | claude -p --dangerously-skip-permissions)"
+            echo "$claude_output"
+            claude_verdict="$(get_verdict "$claude_output")"
+            last_note="$claude_output"
+
+            claude_changed=false
+            if [ -n "$(git status --porcelain)" ]; then
+              claude_changed=true
+              git add -A
+              git add -f -- openspec
+              git commit -m "Code review round $round (Claude): revise implementation for issue #$ISSUE_NUMBER" > /dev/null
+            fi
+
+            codex_output="$(review_prompt "$round" "Codex" "Claude Code" "$last_note" | codex exec -s workspace-write)"
+            echo "$codex_output"
+            codex_verdict="$(get_verdict "$codex_output")"
+            last_note="$codex_output"
+
+            codex_changed=false
+            if [ -n "$(git status --porcelain)" ]; then
+              codex_changed=true
+              git add -A
+              git add -f -- openspec
+              git commit -m "Code review round $round (Codex): revise implementation for issue #$ISSUE_NUMBER" > /dev/null
+            fi
+
+            if [ "$claude_verdict" = "AGREE" ] && [ "$codex_verdict" = "AGREE" ] && [ "$claude_changed" = false ] && [ "$codex_changed" = false ]; then
+              echo "Consensus reached after round $round."
+              break
+            fi
+
+            if [ "$round" -eq 3 ]; then
+              gh issue comment "$ISSUE_NUMBER" --body "コードレビュー: 3ラウンドを経ても合意に至りませんでした。未合意のままCI/ビルド確認に進みます。各ラウンドの指摘は上記ワークフローログを参照してください。"
+            fi
+          done
+
+          git push origin "HEAD:refs/heads/feature/$ISSUE_NUMBER"
+
+  # ---------------------------------------------------------------------
+  # 7-8: wait for CI (fix-and-retry on failure), then build confirmation
+  # (push to build/<N>, dispatch build.yml, fix-and-retry on failure)
+  # ---------------------------------------------------------------------
+
+  verify:
+    needs: [review-code, review-proposal, implement]
+    if: always() && needs.implement.result == 'success' && !startsWith(needs.implement.outputs.status, 'BLOCKED')
+    runs-on: ubuntu-latest
+    outputs:
+      build_ok: ${{ steps.build.outputs.build_ok }}
+      artifact_url: ${{ steps.build.outputs.artifact_url }}
+      run_url: ${{ steps.build.outputs.run_url }}
+    env:
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+      ISSUE_NUMBER: ${{ github.event.issue.number }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: feature/${{ github.event.issue.number }}
+          fetch-depth: 0
+
+      - name: Install Claude Code CLI
+        run: curl -fsSL https://claude.ai/install.sh | bash
+
+      - name: Wait for CI (step 7), fix-and-retry on failure
+        run: |
+          for attempt in 1 2; do
+            sha="$(git rev-parse HEAD)"
+            echo "=== CI attempt $attempt for $sha ==="
+
+            run_id=""
+            for i in $(seq 1 30); do
+              run_id="$(gh run list --workflow=ci.yml --branch="feature/$ISSUE_NUMBER" --json databaseId,headSha,status --jq "[.[] | select(.headSha==\"$sha\")] | .[0].databaseId // empty")"
+              if [ -n "$run_id" ]; then break; fi
+              sleep 10
+            done
+
+            if [ -z "$run_id" ]; then
+              echo "::error::No ci.yml run appeared for $sha within timeout."
+              exit 1
+            fi
+
+            gh run watch "$run_id" --exit-status && ci_ok=true || ci_ok=false
+            if [ "$ci_ok" = true ]; then
+              echo "CI passed."
+              break
+            fi
+
+            if [ "$attempt" -eq 2 ]; then
+              echo "::error::CI failed twice; giving up."
+              gh issue comment "$ISSUE_NUMBER" --body "CI (typecheck/lint/clippy) が2回連続で失敗しました。ワークフローログを確認してください: $(gh run view "$run_id" --json url --jq .url)"
+              exit 1
+            fi
+
+            failLog="$(mktemp)"
+            gh run view "$run_id" --log-failed > "$failLog" || true
+
+            promptFile="$(mktemp)"
+            cat > "$promptFile" <<EOF
+          CI (typecheck/lint/clippy) failed for Issue #$ISSUE_NUMBER on
+          feature/$ISSUE_NUMBER (attempt $attempt). You are checked out on
+          that branch. The failed run's log is at: $failLog
+
+          Read that log, find the actual cause in the source it points to,
+          and fix it. Keep changes minimal and scoped to the CI failure.
+          Commit your fix (do not push -- that is handled separately).
+          EOF
+            claude -p --dangerously-skip-permissions < "$promptFile"
+            git push origin "HEAD:refs/heads/feature/$ISSUE_NUMBER"
+          done
+
+      - name: "Build confirmation loop (step 8: push to build/<N>, fix-and-retry)"
+        id: build
+        run: |
+          build_ok=false
+          run_url=""
+          artifact_url=""
+
+          for attempt in 1 2; do
+            echo "=== Build attempt $attempt ==="
+
+            git commit --allow-empty -m "chore: trigger build for issue #$ISSUE_NUMBER (attempt $attempt)" > /dev/null
+            git push --force origin "HEAD:refs/heads/build/$ISSUE_NUMBER"
+
+            dispatch_time="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            gh workflow run build.yml --ref "build/$ISSUE_NUMBER"
+
+            run_id=""
+            for i in $(seq 1 30); do
+              sleep 10
+              run_id="$(gh run list --workflow=build.yml --branch="build/$ISSUE_NUMBER" --json databaseId,createdAt --jq "[.[] | select(.createdAt >= \"$dispatch_time\")] | .[0].databaseId // empty")"
+              if [ -n "$run_id" ]; then break; fi
+            done
+
+            if [ -z "$run_id" ]; then
+              echo "No build.yml run appeared for dispatch at $dispatch_time within timeout."
+              continue
+            fi
+
+            run_url="$(gh run view "$run_id" --json url --jq .url)"
+            echo "Watching run: $run_url"
+
+            if gh run watch "$run_id" --exit-status; then
+              build_ok=true
+              artifact_id="$(gh api "repos/${{ github.repository }}/actions/runs/$run_id/artifacts" --jq '.artifacts[0].id // empty')"
+              if [ -n "$artifact_id" ]; then
+                artifact_url="https://github.com/${{ github.repository }}/actions/runs/$run_id/artifacts/$artifact_id"
+              fi
+              break
+            fi
+
+            if [ "$attempt" -lt 2 ]; then
+              failLog="$(mktemp)"
+              gh run view "$run_id" --log-failed > "$failLog" || true
+
+              promptFile="$(mktemp)"
+              cat > "$promptFile" <<EOF
+          The Tauri build for Issue #$ISSUE_NUMBER failed (attempt $attempt).
+          You are checked out on feature/$ISSUE_NUMBER. The failed run's
+          log is at: $failLog
+
+          Read that log, find the actual cause in the source it points to,
+          and fix it. Keep changes minimal and scoped to the build failure.
+          Commit your fix (do not push -- that is handled separately).
+          EOF
+              claude -p --dangerously-skip-permissions < "$promptFile"
+            fi
+          done
+
+          echo "build_ok=$build_ok" >> "$GITHUB_OUTPUT"
+          echo "run_url=$run_url" >> "$GITHUB_OUTPUT"
+          echo "artifact_url=$artifact_url" >> "$GITHUB_OUTPUT"
+
+          git push origin "HEAD:refs/heads/feature/$ISSUE_NUMBER"
+
+  # ---------------------------------------------------------------------
+  # 9: PR for the user's build verification -- the one human gate
+  # ---------------------------------------------------------------------
+
+  pr:
+    needs: verify
+    if: always() && needs.verify.outputs.build_ok == 'true'
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      ISSUE_NUMBER: ${{ github.event.issue.number }}
+      RUN_URL: ${{ needs.verify.outputs.run_url }}
+      ARTIFACT_URL: ${{ needs.verify.outputs.artifact_url }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Create PR (step 9)
+        run: |
+          bodyFile="$(mktemp)"
+          {
+            echo "Relates to #$ISSUE_NUMBER"
+            echo ""
+            echo "Build succeeded: $RUN_URL"
+            if [ -n "$ARTIFACT_URL" ]; then
+              echo ""
+              echo "**[インストーラーをダウンロード]($ARTIFACT_URL)**"
+            fi
+            echo ""
+            echo "ダウンロードして動作検証のうえ、問題なければこのPRをApproveしてください。このPRは自動マージされません。承認後の release フェーズは [ブランチ・リリース戦略](docs/仕様/ブランチ・リリース戦略.md) を参照してください。"
+          } > "$bodyFile"
+
+          gh pr create \
+            --base main \
+            --head "build/$ISSUE_NUMBER" \
+            --title "Issue #$ISSUE_NUMBER: build ready for verification" \
+            --body-file "$bodyFile"
+
+  # ---------------------------------------------------------------------
+  # Final status comment on the issue, covering every stop/failure path
+  # ---------------------------------------------------------------------
+
+  comment:
+    needs: [propose, review-proposal, implement, review-code, verify, pr]
+    if: always() && needs.propose.result != 'skipped'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Comment on the issue
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        env:
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          PROPOSE_STATUS: ${{ needs.propose.outputs.status }}
+          IMPLEMENT_STATUS: ${{ needs.implement.outputs.status }}
+          IMPLEMENT_RESULT: ${{ needs.implement.result }}
+          VERIFY_RESULT: ${{ needs.verify.result }}
+          BUILD_OK: ${{ needs.verify.outputs.build_ok }}
+          RUN_URL: ${{ needs.verify.outputs.run_url }}
+          PR_RESULT: ${{ needs.pr.result }}
+        with:
+          script: |
+            const branch = `feature/${process.env.ISSUE_NUMBER}`;
+            const proposeStatus = process.env.PROPOSE_STATUS || '';
+            const implementStatus = process.env.IMPLEMENT_STATUS || '';
+            const implementResult = process.env.IMPLEMENT_RESULT;
+            const buildOk = process.env.BUILD_OK === 'true';
+            const runUrl = process.env.RUN_URL;
+            const prCreated = process.env.PR_RESULT === 'success';
+
+            let body;
+            if (proposeStatus.startsWith('SKIP')) {
+              body = `提案作成をスキップしました: ${proposeStatus}`;
+            } else if (implementResult !== 'success') {
+              body = `実装ステップが失敗しました。ワークフローのログを確認してください。ブランチ: \`${branch}\``;
+            } else if (implementStatus.startsWith('BLOCKED')) {
+              body = `実装がブロックされました: ${implementStatus}\n\nコヒーレントな部分実装はコミット・pushされています。ブランチ: \`${branch}\``;
+            } else if (buildOk && prCreated) {
+              body = `実装・レビュー完了、ビルド成功: ${runUrl}\n\nPRを作成しました。ダウンロードして動作検証・承認してください。`;
+            } else if (buildOk) {
+              body = `実装・レビュー完了、ビルド成功: ${runUrl}\n\nですがPR作成に失敗しました。ワークフローログを確認してください。`;
+            } else {
+              body = `実装・レビューは完了しましたが、ビルドがリトライ後も成功しませんでした。\`build/${process.env.ISSUE_NUMBER}\` とワークフローログを確認してください。`;
+            }
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body,
+            });
