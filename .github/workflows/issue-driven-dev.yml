@@ -505,12 +505,12 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: feature/${{ github.event.issue.number }}
+          fetch-depth: 0
 
       - name: Configure git identity for AI commits
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          fetch-depth: 0
 
       - name: Install Claude Code CLI
         run: curl -fsSL https://claude.ai/install.sh | bash
