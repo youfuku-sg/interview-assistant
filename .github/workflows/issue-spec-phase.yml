@@ -56,9 +56,13 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ needs.create-branch.outputs.branch }}
+          # GITHUB_TOKEN pushes don't trigger other workflow runs (loop
+          # prevention), so the push below -- which must fire the
+          # `push: branches: spec/**` trigger -- needs a PAT instead.
+          token: ${{ secrets.GH_WORKFLOW_PAT }}
 
       - name: Create OpenSpec proposal with Claude Code
-        shell: powershell
+        shell: pwsh
         env:
           ISSUE_NUMBER: ${{ github.event.issue.number }}
         run: |
@@ -114,7 +118,7 @@ jobs:
           Get-Content $statusFilePath
 
       - name: Push proposal commit (if any)
-        shell: powershell
+        shell: pwsh
         run: |
           $statusFilePath = "$env:RUNNER_TEMP\claude-propose-status.txt"
           $status = (Get-Content $statusFilePath -Raw).Trim()
@@ -161,9 +165,14 @@ jobs:
 
           # Round N's review happens on the content produced by round N-1's
           # synthesis commit (or the initial proposal, for round 1). Counting
-          # past synthesis commits and adding 1 gives the round that is about
-          # to run -- no separate state file needed.
-          past_rounds="$(git log --oneline --grep='^AI review round ' | wc -l | tr -d ' ')"
+          # past synthesis commits for *this issue* and adding 1 gives the
+          # round that is about to run -- no separate state file needed. The
+          # grep is scoped to this issue's number (not just the
+          # "AI review round " prefix) because main -- and therefore every
+          # spec/<N> branch cut from it -- can already contain synthesis
+          # commits from earlier issues' spec phases, which would otherwise
+          # inflate the count.
+          past_rounds="$(git log --oneline --grep="(synthesis, issue #${issue_number}):" | wc -l | tr -d ' ')"
           round=$((past_rounds + 1))
           echo "round=$round" >> "$GITHUB_OUTPUT"
 
@@ -198,10 +207,10 @@ jobs:
         run: |
           promptFile="$(mktemp)"
           cat > "$promptFile" <<EOF
-          あなたは経験豊富なソフトウェアアーキテクト兼レビュアーです。3人のAIレビュアー
-          (Claude Code・Codex・qwen(ローカルLLM))の1人として、Issue #$ISSUE_NUMBER の
+          あなたは経験豊富なソフトウェアアーキテクト兼レビュアーです。2人のAIレビュアー
+          (Claude Code・Codex)の1人として、Issue #$ISSUE_NUMBER の
           OpenSpec提案 openspec/changes/$CHANGE_NAME/ をラウンド$ROUNDとしてレビューして
-          ください(他の2人はCodexとqwenです)。
+          ください(もう1人はCodexです)。
 
           proposal.md・design.md・tasks.md・specs/*/spec.md(存在する場合)を読み直した
           うえで、以下の観点で精査してください:
@@ -264,10 +273,10 @@ jobs:
         run: |
           promptFile="$(mktemp)"
           cat > "$promptFile" <<EOF
-          あなたは経験豊富なソフトウェアアーキテクト兼レビュアーです。3人のAIレビュアー
-          (Claude Code・Codex・qwen(ローカルLLM))の1人として、Issue #$ISSUE_NUMBER の
+          あなたは経験豊富なソフトウェアアーキテクト兼レビュアーです。2人のAIレビュアー
+          (Claude Code・Codex)の1人として、Issue #$ISSUE_NUMBER の
           OpenSpec提案 openspec/changes/$CHANGE_NAME/ をラウンド$ROUNDとしてレビューして
-          ください(他の2人はClaude Codeとqwenです)。
+          ください(もう1人はClaude Codeです)。
 
           proposal.md・design.md・tasks.md・specs/*/spec.md(存在する場合)を読み直した
           うえで、以下の観点で精査してください:
@@ -305,7 +314,10 @@ jobs:
 
   qwen-review:
     needs: determine-round
-    if: needs.determine-round.outputs.proceed == 'true'
+    # Disabled: the local LM Studio reviewer has been unreliable (hangs for
+    # 10+ minutes, sometimes indefinitely) and is blocking the spec phase.
+    # Re-enable by restoring the proceed check below once that's resolved.
+    if: false && needs.determine-round.outputs.proceed == 'true'
     # Needs to reach the user's own LM Studio instance at localhost:1234, so
     # this job cannot run on a GitHub-hosted runner.
     runs-on: [self-hosted, Windows, X64]
@@ -323,7 +335,7 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Ensure Aider (Python 3.12) is available
-        shell: powershell
+        shell: pwsh
         run: |
           winget install --id Python.Python.3.12 -e --silent --accept-package-agreements --accept-source-agreements
           py -3.12 -m pip install --upgrade pip setuptools wheel
@@ -331,7 +343,7 @@ jobs:
           py -3.12 -m aider --version
 
       - name: Review proposal (read-only) and post Issue comment
-        shell: powershell
+        shell: pwsh
         run: |
           $ErrorActionPreference = "Continue"
           chcp 65001 | Out-Null
@@ -371,7 +383,7 @@ jobs:
           # waiting on a comment that will never arrive.
           $review = ""
           try {
-            $review = (py -3.12 -m aider --model lm_studio/qwen3.6-35b-a3b-mtp --message-file $promptPath --yes --no-auto-commits --no-stream 2>&1 | Out-String)
+            $review = (py -3.12 -m aider --model lm_studio/google/gemma-4-12b --message-file $promptPath --yes --no-auto-commits --no-stream 2>&1 | Out-String)
           } catch {
             Write-Host "qwen/Aider invocation threw an exception this round: $_"
             $review = "(このラウンドではqwen/Aiderの実行に失敗しました: $_)`nVERDICT: REQUEST_CHANGES"
@@ -404,10 +416,16 @@ jobs:
     steps:
       - name: Check out spec branch
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          # GITHUB_TOKEN pushes don't trigger other workflow runs (loop
+          # prevention), so the push below -- which must fire the
+          # `push: branches: spec/**` trigger for the next round -- needs a
+          # PAT instead.
+          token: ${{ secrets.GH_WORKFLOW_PAT }}
 
       - name: Collect this round's 3 review comments and decide
         id: decide
-        shell: powershell
+        shell: pwsh
         run: |
           $ErrorActionPreference = "Continue"
           $repo = $env:GITHUB_REPOSITORY
@@ -419,7 +437,9 @@ jobs:
           $comments = Invoke-RestMethod -Headers $headers `
             -Uri "https://api.github.com/repos/$repo/issues/$env:ISSUE_NUMBER/comments?per_page=100"
 
-          $agents = "claude", "codex", "qwen"
+          # qwen (local LM Studio reviewer) is temporarily disabled -- see
+          # qwen-review's `if: false`. Restore it here when re-enabled.
+          $agents = "claude", "codex"
           $found = @{}
           foreach ($agent in $agents) {
             $marker = "<!-- ai-review round=$env:ROUND agent=$agent issue=$env:ISSUE_NUMBER -->"
@@ -427,9 +447,9 @@ jobs:
             if ($match) { $found[$agent] = $match.body }
           }
 
-          if ($found.Count -lt 3) {
+          if ($found.Count -lt $agents.Count) {
             $missing = $agents | Where-Object { -not $found.ContainsKey($_) }
-            $msg = "ラウンド $env:ROUND: 次のレビュアーからのコメントが見つかりませんでした: $($missing -join ', ')。自動集約を停止します。手動で確認してください。"
+            $msg = "ラウンド ${env:ROUND}: 次のレビュアーからのコメントが見つかりませんでした: $($missing -join ', ')。自動集約を停止します。手動で確認してください。"
             gh issue comment $env:ISSUE_NUMBER --body $msg
             echo "terminal=true" >> $env:GITHUB_OUTPUT
             echo "consensus=false" >> $env:GITHUB_OUTPUT
@@ -449,29 +469,29 @@ jobs:
           $allAgree = ($verdicts.Values | Where-Object { $_ -ne "AGREE" }).Count -eq 0
 
           if ($allAgree) {
-            Write-Host "Round $env:ROUND: all 3 AI reviewers agree."
+            Write-Host "Round ${env:ROUND}: all AI reviewers agree."
             echo "terminal=true" >> $env:GITHUB_OUTPUT
             echo "consensus=true" >> $env:GITHUB_OUTPUT
             exit 0
           }
 
           if ([int]$env:ROUND -ge 3) {
-            Write-Host "Round $env:ROUND: no consensus, and round cap reached."
+            Write-Host "Round ${env:ROUND}: no consensus, and round cap reached."
             echo "terminal=true" >> $env:GITHUB_OUTPUT
             echo "consensus=false" >> $env:GITHUB_OUTPUT
             exit 0
           }
 
-          # Not yet 3, and not all agree: have Claude Code fold all 3
+          # Not yet round 3, and not all agree: have Claude Code fold the
           # reviews into the proposal and push. That push re-triggers this
           # workflow for the next round.
           $promptPath = "$env:RUNNER_TEMP\claude-synth-prompt.txt"
           @"
           Issue #$env:ISSUE_NUMBER の OpenSpec 提案
-          openspec/changes/$env:CHANGE_NAME/ について、3人のAIレビュアー(Claude Code・
-          Codex・qwen(Aider経由のローカルLLM))が別々のGitHub Actionsジョブでラウンド
-          $env:ROUND のレビューを行い、それぞれ指摘をIssueコメントとして投稿しました。
-          各レビュアーの全文は以下の通りです:
+          openspec/changes/$env:CHANGE_NAME/ について、2人のAIレビュアー(Claude Code・
+          Codex)が別々のGitHub Actionsジョブでラウンド $env:ROUND のレビューを行い、
+          それぞれ指摘をIssueコメントとして投稿しました(qwen(ローカルLLM)は現在
+          一時的に無効化されています)。各レビュアーの全文は以下の通りです:
 
           --- Claude Code ---
           $($found["claude"])
@@ -479,25 +499,29 @@ jobs:
           --- Codex ---
           $($found["codex"])
 
-          --- qwen (Aider) ---
-          $($found["qwen"])
-
           上記のコメントだけに頼らず、openspec/changes/$env:CHANGE_NAME/ 配下の
           proposal.md・design.md・tasks.md・specs/*/spec.md(存在する場合)を自分で
-          読み直したうえで、3人のうち妥当だと判断した指摘を提案ファイルに反映してくだ
+          読み直したうえで、2人のうち妥当だと判断した指摘を提案ファイルに反映してくだ
           さい。指摘が的外れ、または既に対応済みの場合はその部分を変更しなくて構いません。
 
           変更内容は、次の形式のコミットメッセージでコミットしてください(この
-          "AI review round <N> (synthesis): ..." という接頭辞は次ラウンドの検知に
-          使われるため、一字一句そのまま使うこと):
-          "AI review round $env:ROUND (synthesis): <変更内容の要約>"
+          "AI review round <N> (synthesis, issue #<M>): ..." という接頭辞は次ラウンド
+          の検知に使われるため、一字一句そのまま使うこと):
+          "AI review round $env:ROUND (synthesis, issue #$env:ISSUE_NUMBER): <変更内容の要約>"
           (openspec/ は .gitignore 対象なので ``git add -f`` を使うこと)。push は
           別ステップで行うので、ここでは行わないでください。
           "@ | Set-Content -Path $promptPath -Encoding utf8
 
+          $beforeSha = (git rev-parse HEAD).Trim()
           Get-Content -Raw $promptPath | claude -p --dangerously-skip-permissions
+          $afterSha = (git rev-parse HEAD).Trim()
 
-          $changed = [bool](git status --porcelain)
+          # Claude is instructed to commit (not just edit) its changes, so a
+          # clean working tree afterward is the *expected* outcome on
+          # success -- it does NOT mean "no changes were made". Compare HEAD
+          # before/after instead of `git status --porcelain`, which can't
+          # tell "nothing changed" apart from "changes were committed".
+          $changed = $afterSha -ne $beforeSha
           if (-not $changed) {
             Write-Host "Claude Code made no changes despite REQUEST_CHANGES feedback; treating round as terminal to avoid an infinite loop."
             echo "terminal=true" >> $env:GITHUB_OUTPUT
@@ -515,7 +539,11 @@ jobs:
 
   create-pr:
     needs: [determine-round, synthesize]
-    if: needs.synthesize.outputs.terminal == 'true'
+    # always() is required here: without it, this job was observed to be
+    # skipped even when terminal == 'true' (reproduced twice on issue #16),
+    # while the `comment` job below -- which already uses always() -- read
+    # the same output correctly both times.
+    if: always() && needs.synthesize.outputs.terminal == 'true'
     runs-on: ubuntu-latest
     outputs:
       pr_url: ${{ steps.create.outputs.pr_url }}
@@ -544,9 +572,9 @@ jobs:
             echo "Issue #$ISSUE_NUMBER に関連"
             echo ""
             if [ "$CONSENSUS" = "true" ]; then
-              echo "OpenSpec提案 \`$CHANGE_NAME\` をClaude Code・Codex・qwenがレビューしました($ROUND ラウンドで合意)。"
+              echo "OpenSpec提案 \`$CHANGE_NAME\` をClaude Code・Codexがレビューしました($ROUND ラウンドで合意)。"
             else
-              echo "OpenSpec提案 \`$CHANGE_NAME\` を作成しましたが、3人のAIレビュアーは $ROUND ラウンドを経ても合意に至りませんでした。各ラウンドのIssueコメントで理由を確認してください。"
+              echo "OpenSpec提案 \`$CHANGE_NAME\` を作成しましたが、AIレビュアーは $ROUND ラウンドを経ても合意に至りませんでした。各ラウンドのIssueコメントで理由を確認してください。"
             fi
             echo ""
             echo "このPRはレビューゲートであり、自動マージはされません。承認は次のdevフェーズへ進んでよいという合図です(docs/仕様/Issue駆動開発フロー.md §4.5〜4.6参照)。"
@@ -564,6 +592,9 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
       - name: Comment on the issue
         run: |
           issue_number="${{ needs.determine-round.outputs.issue_number }}"
