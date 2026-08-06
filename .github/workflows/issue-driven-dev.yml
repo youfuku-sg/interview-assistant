@@ -335,7 +335,15 @@ jobs:
              and read every file listed under contextFiles.
           3. Implement each pending task, keeping changes minimal and
              scoped to what the task describes. Mark each task's checkbox
-             (\`- [ ]\` -> \`- [x]\`) in tasks.md as you complete it.
+             (\`- [ ]\` -> \`- [x]\`) in tasks.md as you complete it. You are
+             running headless in CI with no display and cannot run or
+             visually inspect the app -- if a task's acceptance criteria is
+             literally "visually confirm X looks right" or similar, make
+             the code change that should produce that result, mark the
+             checkbox complete, and note in a code comment or your final
+             status line that visual confirmation is deferred to the
+             human's build-verification step (step 9). That is expected
+             and is not a reason to report BLOCKED.
           4. Run \`npm run typecheck\` and \`npm run lint\`. Fix anything
              they flag before finishing. If you touched Rust code under
              src-tauri/, you will not be able to run cargo here (no Rust
