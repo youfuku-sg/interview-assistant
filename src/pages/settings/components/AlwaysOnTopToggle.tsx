@@ -17,6 +17,7 @@ export const AlwaysOnTopToggle = ({ className }: AlwaysOnTopToggleProps) => {
       <Header
         title="常に最前面に表示"
         description="ウィンドウを他のすべてのアプリケーションより前面に表示するかどうかを制御します"
+        descriptionClassName="text-sm lg:text-base"
         isMainTitle
       />
       <div className="flex items-center justify-between">
@@ -27,7 +28,7 @@ export const AlwaysOnTopToggle = ({ className }: AlwaysOnTopToggleProps) => {
                 ? "常に最前面表示を無効化"
                 : "常に最前面表示を有効化"}
             </Label>
-            <p className="text-xs text-muted-foreground mt-1">
+            <p className="text-sm text-muted-foreground mt-1">
               {customizable.alwaysOnTop.isEnabled
                 ? "ウィンドウは常に他のアプリケーションより前面に表示されます(既定)"
                 : "ウィンドウは通常のアプリケーションと同じように動作します"}

@@ -19,13 +19,14 @@ export const AutostartToggle = ({ className }: AutostartToggleProps) => {
       <Header
         title="起動時に自動起動"
         description="システム起動時にInterview-Assistantを自動的に開きます"
+        descriptionClassName="text-sm lg:text-base"
         isMainTitle
       />
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-3">
           <div>
             <Label className="text-sm font-medium">起動時に開く</Label>
-            <p className="text-xs text-muted-foreground mt-1">
+            <p className="text-sm text-muted-foreground mt-1">
               {isEnabled
                 ? "システム起動時にInterview-Assistantが自動的に起動します"
                 : "Interview-Assistantは自動的に起動しません"}

@@ -7,6 +7,7 @@ export const PageLayout = ({
   rightSlot,
   allowBackButton = false,
   isMainTitle = true,
+  descriptionClassName,
 }: {
   children: React.ReactNode;
   title: string;
@@ -14,6 +15,7 @@ export const PageLayout = ({
   rightSlot?: React.ReactNode;
   allowBackButton?: boolean;
   isMainTitle?: boolean;
+  descriptionClassName?: string;
 }) => {
   return (
     <div className="flex flex-1 flex-col">
@@ -23,6 +25,7 @@ export const PageLayout = ({
           showBorder={true}
           title={title}
           description={description}
+          descriptionClassName={descriptionClassName}
           rightSlot={rightSlot}
           allowBackButton={allowBackButton}
         />

@@ -16,6 +16,7 @@ export const Theme = () => {
       <Header
         title="テーマのカスタマイズ"
         description="カスタムテーマと透明度の設定で表示をカスタマイズします"
+        descriptionClassName="text-sm lg:text-base"
         isMainTitle
       />
 
@@ -42,7 +43,7 @@ export const Theme = () => {
                   </>
                 )}
               </Label>
-              <p className="text-xs text-muted-foreground mt-1">
+              <p className="text-sm text-muted-foreground mt-1">
                 {theme === "light"
                   ? "明るい環境で見やすいライトテーマを使用しています"
                   : "暗い環境で見やすいダークテーマを使用しています"}
@@ -82,6 +83,7 @@ export const Theme = () => {
         <Header
           title="ウィンドウの透明度"
           description="アプリケーションウィンドウの透明度を調整します"
+          descriptionClassName="text-xs lg:text-sm"
         />
         <div className="space-y-3">
           <div className="flex items-center gap-4 mt-4">
@@ -95,7 +97,7 @@ export const Theme = () => {
             />
           </div>
 
-          <p className="text-xs text-muted-foreground/70">
+          <p className="text-sm text-muted-foreground/70">
             💡 ヒント: 透明度を上げるとウィンドウが透けて見えるようになり、暗いオーバーレイに最適です。変更はすぐに反映されます。
           </p>
         </div>

@@ -8,7 +8,11 @@ import { PageLayout } from "@/layouts";
 
 const Settings = () => {
   return (
-    <PageLayout title="設定" description="アプリの設定を管理します">
+    <PageLayout
+      title="設定"
+      description="アプリの設定を管理します"
+      descriptionClassName="text-sm lg:text-base"
+    >
       {/* Theme */}
       <Theme />
 

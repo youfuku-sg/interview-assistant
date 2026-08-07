@@ -17,6 +17,7 @@ export const AppIconToggle = ({ className }: AppIconToggleProps) => {
       <Header
         title="アプリアイコン ステルスモード"
         description="ウィンドウが非表示のときの Dock/タスクバーアイコンの表示を制御します"
+        descriptionClassName="text-sm lg:text-base"
         isMainTitle
       />
       <div className="flex items-center justify-between">
@@ -27,7 +28,7 @@ export const AppIconToggle = ({ className }: AppIconToggleProps) => {
                 ? "Dock/タスクバーにアイコンを表示"
                 : "Dock/タスクバーからアイコンを非表示"}
             </Label>
-            <p className="text-xs text-muted-foreground mt-1">
+            <p className="text-sm text-muted-foreground mt-1">
               {`アプリアイコンを${
                 !customizable.appIcon.isVisible ? "表示" : "非表示"
               }に切り替え`}
