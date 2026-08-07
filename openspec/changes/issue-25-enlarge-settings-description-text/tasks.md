@@ -12,11 +12,10 @@
 - [ ] 2.6 `src/pages/settings/components/AutostartToggle.tsx` の `Header` に `descriptionClassName="text-sm lg:text-base"` を渡し、個別説明文(`text-xs text-muted-foreground mt-1`)を `text-sm text-muted-foreground mt-1` に変更する。
 - [ ] 2.7 `src/pages/settings/components/AppIconToggle.tsx` の `Header` に `descriptionClassName="text-sm lg:text-base"` を渡し、個別説明文(`text-xs text-muted-foreground mt-1`)を `text-sm text-muted-foreground mt-1` に変更する。
 - [ ] 2.8 `src/pages/settings/components/AlwaysOnTopToggle.tsx` の `Header` に `descriptionClassName="text-sm lg:text-base"` を渡し、個別説明文(`text-xs text-muted-foreground mt-1`)を `text-sm text-muted-foreground mt-1` に変更する。
-- [ ] 2.9 `src/pages/settings/components/DeleteChats.tsx` の `Header` に `descriptionClassName="text-sm lg:text-base"` を渡す(削除確認ダイアログ内のテキストは変更しない)。
 
 ## 3. スペック同期・動作確認
 
 - [ ] 3.1 `openspec validate issue-25-enlarge-settings-description-text --strict` を実行しエラーがないことを確認する
 - [ ] 3.2 `npm run typecheck` と `npm run lint` を実行しエラーがないことを確認する
-- [ ] 3.3 アプリを起動し、設定画面の各項目(テーマ、自動起動、アプリアイコン、常に最前面表示、チャット履歴削除)の説明文が変更前より一段階大きく、読みやすくなっていることを確認する
+- [ ] 3.3 アプリを起動し、設定画面の各項目(テーマ、自動起動、アプリアイコン、常に最前面表示)の説明文が変更前より一段階大きく、読みやすくなっていることを確認する
 - [ ] 3.4 設定画面以外の画面(ダッシュボード、チャット、音声、スクリーンショット、ショートカット、応答、Dev Space など)の説明文フォントサイズが変更前と変わっていないことを確認する
