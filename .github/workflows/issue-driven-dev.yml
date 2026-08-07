@@ -492,7 +492,11 @@ jobs:
     needs: [review-code, review-proposal, implement]
     if: always() && needs.implement.result == 'success' && !startsWith(needs.implement.outputs.status, 'BLOCKED')
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    # A from-scratch Tauri/Rust build alone takes ~25min (observed on issue
+    # #24); this job also waits on CI first and retries up to twice each on
+    # CI and build failure, so budget generously rather than risk a
+    # timeout-based cancellation of an otherwise-succeeding build.
+    timeout-minutes: 90
     outputs:
       build_ok: ${{ steps.build.outputs.build_ok }}
       artifact_url: ${{ steps.build.outputs.artifact_url }}
