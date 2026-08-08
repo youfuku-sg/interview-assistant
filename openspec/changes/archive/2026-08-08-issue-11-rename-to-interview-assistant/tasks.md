@@ -29,7 +29,7 @@
 ## 4. 検証
 
 - [x] 4.1 `npm run typecheck` / `npm run build` / `npm run lint` が成功することを確認する
-- [ ] 4.2 Rust ツールチェーンが使える環境で `cargo fmt --check` / `cargo clippy` / `cargo check` が成功することを確認する
-- [ ] 4.3 次回ビルド(`build/<name>` への push、またはリリースビルド)で、生成される Windows インストーラのファイル名が新しい `productName` を反映していることを確認する
-- [ ] 4.4 `identifier` を変更した場合、既存インストール環境でのアンインストール・新規インストールの動作を確認する
-- [ ] 4.5 アプリを起動し、ダッシュボード・サイドバー・エラー画面・設定画面・権限案内・ウィンドウタイトル等、2.7 で洗い出した箇所すべてで「Interview-Pilot」表記が「Interview-Assistant」に置き換わっていることを目視確認する(ユーザーによる動作検証、Issue駆動開発フロー 4.11)
+- [x] 4.2 Rust ツールチェーンが使える環境で `cargo fmt --check` / `cargo clippy` / `cargo check` が成功することを確認する(CI `ci.yml` の `rust` job、`build/issue-11-rename-remaining` push time、成功)
+- [x] 4.3 次回ビルド(`build/<name>` への push、またはリリースビルド)で、生成される Windows インストーラのファイル名が新しい `productName` を反映していることを確認する(`Build (confirmation)` run 31262696411、`Interview-Assistant_0.6.1_x64-setup.exe` / `Interview-Assistant_0.6.1_x64_ja-JP.msi` を生成、成功)
+- [x] 4.4 `identifier` を変更した場合、既存インストール環境でのアンインストール・新規インストールの動作を確認する(ユーザーが実機で確認済み)
+- [x] 4.5 アプリを起動し、ダッシュボード・サイドバー・エラー画面・設定画面・権限案内・ウィンドウタイトル等、2.7 で洗い出した箇所すべてで「Interview-Pilot」表記が「Interview-Assistant」に置き換わっていることを目視確認する(ユーザーによる動作検証、Issue駆動開発フロー 4.11。ユーザーが実機で確認済み)
