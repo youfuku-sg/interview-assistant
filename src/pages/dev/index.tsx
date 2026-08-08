@@ -1,5 +1,4 @@
 import { AIProviders, STTProviders } from "./components";
-import Contribute from "@/components/Contribute";
 import { useSettings } from "@/hooks";
 import { PageLayout } from "@/layouts";
 
@@ -8,7 +7,6 @@ const DevSpace = () => {
 
   return (
     <PageLayout title="開発者スペース" description="開発者スペースを管理します">
-      <Contribute />
       {/* Provider Selection */}
       <AIProviders {...settings} />
 

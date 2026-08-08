@@ -1,13 +1,13 @@
 [Desktop Entry]
 Version=1.0
 Type=Application
-Name=Pluely
-Comment=The Open Source Alternative to Cluely - Lightning-fast, privacy-first AI assistant for meetings and conversations
+Name=Interview-Assistant
+Comment=Local-first desktop app for interview preparation and answer assistance
 Exec=pluely
 Icon=pluely
 Terminal=false
 Categories=Utility;AudioVideo;Audio;Development;Office;
-Keywords=ai;assistant;voice;speech;microphone;meeting;interview;cluely;stealth;privacy;
+Keywords=ai;assistant;voice;speech;microphone;meeting;interview;privacy;
 StartupNotify=true
 StartupWMClass=pluely
 MimeType=audio/wav;audio/mp3;audio/ogg;
