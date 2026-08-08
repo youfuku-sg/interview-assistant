@@ -2,6 +2,13 @@
 
 このファイルは [Keep a Changelog](https://keepachangelog.com/) 形式に準ずる。過去のリリース（v0.1.10 より前）は遡って記載しない。形式・運用方針は `docs/仕様/ブランチ・リリース戦略.md` 4.3節を参照。
 
+## [0.6.2] - 2026-08-09
+
+### Changed
+
+- Issue #11のリネーム作業で積み残していたPluely/Interview-Pilot由来の名称・導線を整理（`package.json`/`Cargo.toml`のリポジトリURL・upstream作者情報・stealthマーケティング文言、`useMenuItems`の寄付/SNS/upstreamサポートリンク、GitHub Issueテンプレートのassignee、`FUNDING.yml`、`Contribute`/`Promote`コンポーネントの削除など）。ドキュメント（リリース手順・TODO・ブランチ戦略）とOpenSpec主仕様（`top-bar-ui`/`manual-update-distribution`/`project-documentation`）のPurpose/説明文も同期
+- OpenSpec変更 `issue-11-rename-to-interview-assistant` をアーカイブし、`product-branding`（製品識別名とGitHubリポジトリ名の一致要件を新規追加）・`project-documentation`（README上のupstreamマーケティング混入禁止要件）の主仕様への同期を完了
+
 ## [0.6.1] - 2026-08-05
 
 ### Changed

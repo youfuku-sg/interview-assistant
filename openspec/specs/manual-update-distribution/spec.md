@@ -1,6 +1,6 @@
 ## Purpose
 
-Interview-Pilot ships without any in-app auto-update mechanism; new versions are obtained manually from GitHub Releases per `installer-release-workflow`.
+Interview-Assistant ships without any in-app auto-update mechanism; new versions are obtained manually from GitHub Releases per `installer-release-workflow`.
 
 ## Requirements
 

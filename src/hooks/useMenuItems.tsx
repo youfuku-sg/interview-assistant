@@ -8,14 +8,11 @@ import {
   MonitorIcon,
   HomeIcon,
   PowerIcon,
-  MailIcon,
-  CoffeeIcon,
-  GlobeIcon,
   BugIcon,
   MessageSquareTextIcon,
 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
-import { XIcon, GithubIcon } from "@/components";
+import { GithubIcon } from "@/components";
 
 export const useMenuItems = () => {
   const menu: {
@@ -74,14 +71,9 @@ export const useMenuItems = () => {
 
   const footerItems = [
     {
-      icon: MailIcon,
-      label: "サポートに問い合わせ",
-      href: "mailto:support@pluely.com",
-    },
-    {
       icon: BugIcon,
       label: "バグを報告",
-      href: "https://github.com/iamsrikanthnani/pluely/issues/new?template=bug-report.yml",
+      href: "https://github.com/youfuku-sg/interview-assistant/issues/new?template=bug-report.yml",
     },
     {
       icon: PowerIcon,
@@ -98,24 +90,9 @@ export const useMenuItems = () => {
     link: string;
   }[] = [
     {
-      title: "ウェブサイト",
-      icon: GlobeIcon,
-      link: "https://pluely.com",
-    },
-    {
-      title: "Github",
+      title: "GitHub",
       icon: GithubIcon,
-      link: "https://github.com/iamsrikanthnani/pluely",
-    },
-    {
-      title: "Buy Me a Coffee",
-      icon: CoffeeIcon,
-      link: "https://buymeacoffee.com/srikanthnani",
-    },
-    {
-      title: "Xでフォロー",
-      icon: XIcon,
-      link: "https://x.com/srikanthnani",
+      link: "https://github.com/youfuku-sg/interview-assistant",
     },
   ];
 

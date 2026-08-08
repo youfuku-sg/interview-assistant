@@ -1,21 +1,16 @@
 {
   "name": "interview-assistant",
   "private": false,
-  "version": "0.6.1",
-  "description": "The Open Source Alternative to Cluely - A lightning-fast, privacy-first AI assistant that works seamlessly during meetings, interviews, and conversations without anyone knowing.",
-  "author": {
-    "name": "Srikanth Nani",
-    "email": "srikanthnani1202@gmail.com",
-    "url": "https://www.srikanthnani.com"
-  },
+  "version": "0.6.2",
+  "description": "A local-first desktop app for interview preparation and answer assistance.",
   "license": "GPL-3.0",
-  "homepage": "https://github.com/iamsrikanthnani/pluely#readme",
+  "homepage": "https://github.com/youfuku-sg/interview-assistant#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/iamsrikanthnani/pluely.git"
+    "url": "git+https://github.com/youfuku-sg/interview-assistant.git"
   },
   "bugs": {
-    "url": "https://github.com/iamsrikanthnani/pluely/issues"
+    "url": "https://github.com/youfuku-sg/interview-assistant/issues"
   },
   "keywords": [
     "ai-assistant",
@@ -28,7 +23,6 @@
     "llm",
     "chatgpt",
     "claude",
-    "cluely-alternative",
     "typescript",
     "react",
     "rust"
