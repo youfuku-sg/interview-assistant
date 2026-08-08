@@ -1,7 +1,7 @@
 {
   "name": "interview-assistant",
   "private": false,
-  "version": "0.6.1",
+  "version": "0.6.2",
   "description": "A local-first desktop app for interview preparation and answer assistance.",
   "license": "GPL-3.0",
   "homepage": "https://github.com/youfuku-sg/interview-assistant#readme",
