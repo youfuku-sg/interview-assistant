@@ -2,6 +2,12 @@
 
 このファイルは [Keep a Changelog](https://keepachangelog.com/) 形式に準ずる。過去のリリース（v0.1.10 より前）は遡って記載しない。形式・運用方針は `docs/仕様/ブランチ・リリース戦略.md` 4.3節を参照。
 
+## [0.6.3] - 2026-08-09
+
+### Changed
+
+- トップバー右エリアの3段（文字起こし／要約／AI回答）を区切る境界線を強調（`border-border/40` → `border-border/70`）。従来は薄すぎて段の境目がほとんど視認できなかった問題を修正（OpenSpec変更 `emphasize-right-panel-dividers`、`top-bar-ui` 仕様の境界視認性要件を更新）
+
 ## [0.6.2] - 2026-08-09
 
 ### Changed
