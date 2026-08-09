@@ -1,5 +1,6 @@
 import { LoaderIcon } from "lucide-react";
 import { Markdown } from "@/components";
+import { ProviderWarning } from "./ProviderWarning";
 
 type Props = {
   summary: string;
@@ -12,9 +13,8 @@ export const SummaryPanel = ({
   isSummaryProcessing,
   aiReady,
 }: Props) => {
-  // AI プロバイダー未設定時はパネルを非表示にする（エラー表示なし）
   if (!aiReady) {
-    return null;
+    return <ProviderWarning message="AIプロバイダーが設定されていません" />;
   }
 
   if (isSummaryProcessing) {
