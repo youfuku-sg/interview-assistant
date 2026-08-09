@@ -2,6 +2,13 @@
 
 このファイルは [Keep a Changelog](https://keepachangelog.com/) 形式に準ずる。過去のリリース（v0.1.10 より前）は遡って記載しない。形式・運用方針は `docs/仕様/ブランチ・リリース戦略.md` 4.3節を参照。
 
+## [0.6.4] - 2026-08-10
+
+### Changed
+
+- トップバー右エリア1段目（文字起こしパネル）のSTTプロバイダー未設定時の警告表示を、中央寄せ・赤系（`text-destructive`）の強調スタイルに変更（従来は左寄せ・オレンジ・小さい文字で気づきにくかった）
+- 2段目（要約パネル）にAIプロバイダー未設定時の警告「AIプロバイダーが設定されていません」を新規追加（従来は空欄でエラー非表示だったため、反応がない原因に気づけなかった）。3段目（AI回答パネル）は今回のスコープ外で引き続き空欄のまま（OpenSpec変更 `emphasize-provider-warnings`、`top-bar-transcription-panel`/`top-bar-transcript-summary`/`top-bar-ui` 仕様を更新）
+
 ## [0.6.3] - 2026-08-09
 
 ### Changed
