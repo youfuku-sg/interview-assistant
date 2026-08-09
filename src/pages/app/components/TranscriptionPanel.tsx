@@ -1,4 +1,5 @@
-import { AlertCircleIcon, LoaderIcon } from "lucide-react";
+import { LoaderIcon } from "lucide-react";
+import { ProviderWarning } from "./ProviderWarning";
 
 type Props = {
   sessionTranscript: string[];
@@ -12,14 +13,7 @@ export const TranscriptionPanel = ({
   sttReady,
 }: Props) => {
   if (!sttReady) {
-    return (
-      <div className="flex items-center gap-2 px-3 py-2 text-orange-600">
-        <AlertCircleIcon className="w-4 h-4 shrink-0" />
-        <span className="text-xs font-medium">
-          STTプロバイダーが選択されていません
-        </span>
-      </div>
-    );
+    return <ProviderWarning message="STTプロバイダーが選択されていません" />;
   }
 
   if (sessionTranscript.length > 0) {
