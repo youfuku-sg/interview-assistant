@@ -361,11 +361,14 @@ jobs:
     needs: [build-confirm]
     if: needs.build-confirm.outputs.build_ok == 'true'
     runs-on: ubuntu-latest
+    outputs:
+      pr_url: ${{ steps.create.outputs.pr_url }}
     steps:
       - name: Check out repository
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Create PR
+        id: create
         env:
           GH_TOKEN: ${{ github.token }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
@@ -380,11 +383,12 @@ jobs:
             echo "Please download and verify the build. Approve this PR once verified -- this PR is not auto-merged. Approving it triggers OpenSpec archiving; the release flow (docs/仕様/ブランチ・リリース戦略.md) picks up from feature/$ISSUE_NUMBER afterward."
           } > "$BODY_FILE"
 
-          gh pr create \
+          url="$(gh pr create \
             --base main \
             --head "build/$ISSUE_NUMBER" \
             --title "Issue #$ISSUE_NUMBER: build ready for verification" \
-            --body-file "$BODY_FILE"
+            --body-file "$BODY_FILE")"
+          echo "pr_url=$url" >> "$GITHUB_OUTPUT"
 
   comment:
     needs: [create-branch-and-propose, implement, build-confirm, pr]
@@ -401,6 +405,7 @@ jobs:
           BUILD_OK: ${{ needs.build-confirm.result == 'success' && needs.build-confirm.outputs.build_ok }}
           RUN_URL: ${{ needs.build-confirm.outputs.run_url }}
           PR_CREATED: ${{ needs.pr.result == 'success' }}
+          PR_URL: ${{ needs.pr.outputs.pr_url }}
         with:
           script: |
             const branch = `feature/${process.env.ISSUE_NUMBER}`;
@@ -410,18 +415,27 @@ jobs:
             const buildOk = process.env.BUILD_OK === 'true';
             const runUrl = process.env.RUN_URL;
             const prCreated = process.env.PR_CREATED === 'true';
+            const prUrl = process.env.PR_URL;
 
+            // A build/PR can succeed even when the implementation step
+            // reported BLOCKED (e.g. it couldn't run a manual visual check
+            // itself) -- check prCreated/buildOk first so the Actions run
+            // URL and PR link always surface when they exist, and only
+            // treat BLOCKED as terminal when nothing downstream ran.
             let body;
             if (!proposed) {
               body = `Proposal step did not produce an OpenSpec change on \`${branch}\` (request may have been too vague). Check the workflow run logs.`;
             } else if (!implemented) {
               body = `Proposal created on \`${branch}\`, but the implementation step failed to run. Check the workflow run logs.`;
-            } else if (status.startsWith('BLOCKED')) {
-              body = `Implementation on \`${branch}\` is blocked: ${status}.\n\nWhatever partial progress was coherent has been committed and pushed. Please advise.`;
             } else if (prCreated) {
-              body = `Implementation on \`${branch}\` complete. Build succeeded: ${runUrl}\n\nA PR is open for you to download the build and verify.`;
+              body = `Implementation on \`${branch}\` complete. Build succeeded: ${runUrl}\n\nPR ready for verification: ${prUrl}`;
+              if (status.startsWith('BLOCKED')) {
+                body += `\n\nNote from the implementation step: ${status}`;
+              }
             } else if (buildOk) {
               body = `Implementation on \`${branch}\` complete. Build succeeded: ${runUrl}\n\nBut PR creation failed -- check the workflow run logs.`;
+            } else if (status.startsWith('BLOCKED')) {
+              body = `Implementation on \`${branch}\` is blocked: ${status}.\n\nWhatever partial progress was coherent has been committed and pushed. Please advise.`;
             } else {
               body = `Implementation on \`${branch}\` complete, but the build did not succeed after retries. Check the build.yml run logs and \`build/${process.env.ISSUE_NUMBER}\` for details.`;
             }
