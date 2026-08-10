@@ -1,0 +1,485 @@
+name: Issue → Dev (feature branch, self-hosted)
+
+# Implements docs/仕様/Issue駆動開発フロー.md §3: a single feature/<Issue番号>
+# branch, no AI-to-AI review loop, and no human gate between proposal and
+# implementation. Replaces issue-spec-phase.yml and issue-implement.yml
+# (the earlier spec/<N> -> human approval -> dev/<N> two-phase design).
+#
+# All steps from Issue-opened through PR creation are chained via `needs:`
+# within a single workflow run -- there is nothing to retrigger, which avoids
+# the push-retrigger bug class the earlier AI-review-loop design hit.
+#
+# Claude Code / Codex steps run on the self-hosted Windows runner so they can
+# use the machine's existing subscription CLI logins (no API token secrets).
+# Steps that don't invoke an AI CLI (CI, the build.yml trigger, PR creation,
+# issue comments) run on GitHub-hosted runners.
+
+on:
+  issues:
+    types: [opened]
+  pull_request_review:
+    types: [submitted]
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+  actions: write
+
+concurrency:
+  group: issue-driven-dev-${{ github.event.issue.number || github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  # ---------------------------------------------------------------------
+  # Issue opened -> OpenWiki refresh + feature/<N> branch + OpenSpec proposal
+  # ---------------------------------------------------------------------
+
+  create-branch-and-propose:
+    if: github.event_name == 'issues'
+    runs-on: [self-hosted, Windows, X64]
+    outputs:
+      branch: feature/${{ github.event.issue.number }}
+      proposed: ${{ steps.propose.outputs.proposed }}
+    steps:
+      - name: Check out main
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Refresh OpenWiki for this issue (not committed to main)
+        shell: powershell
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          OPENWIKI_LANGSMITH_API_KEY: ${{ secrets.OPENWIKI_LANGSMITH_API_KEY }}
+        run: |
+          npm install --global openwiki@0.2.5 mermaid@11.16.0 jsdom@29.1.1
+          $env:OPENWIKI_PROVIDER = "openrouter"
+          $env:OPENWIKI_MODEL_ID = "z-ai/glm-5.2"
+          openwiki code --update --print
+
+      - name: Create feature/<issue number> and commit OpenWiki refresh (if any)
+        shell: powershell
+        run: |
+          git checkout -b "feature/${{ github.event.issue.number }}"
+
+          $changed = [bool](git status --porcelain -- openwiki)
+          if ($changed) {
+            git add -- openwiki
+            git commit -m "docs: refresh OpenWiki for issue #${{ github.event.issue.number }}"
+          } else {
+            Write-Host "OpenWiki already up to date; nothing to commit."
+          }
+
+          git push origin "HEAD:refs/heads/feature/${{ github.event.issue.number }}"
+
+      - name: Create OpenSpec proposal with Claude Code
+        shell: powershell
+        env:
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          $promptPath = "$env:RUNNER_TEMP\claude-propose-prompt.txt"
+          $statusFilePath = "$env:RUNNER_TEMP\claude-propose-status.txt"
+
+          @"
+          A new GitHub Issue (#$env:ISSUE_NUMBER) was just opened. Read its
+          title and body from the "issue" object in the GitHub event payload
+          JSON file at: $env:GITHUB_EVENT_PATH
+          (read the file directly; do not rely on any shell/env copy of its
+          text, which may be mis-encoded on this Windows runner).
+
+          You are already checked out on the feature branch created for this
+          issue (``feature/$env:ISSUE_NUMBER``), and openwiki/ has already
+          been refreshed on this branch. Follow this repository's documented
+          Issue駆動開発フロー (docs/仕様/Issue駆動開発フロー.md) to turn this
+          rough request into an OpenSpec proposal. Do the following, in
+          order:
+
+          1. Read openwiki/quickstart.md and any linked OpenWiki pages
+             relevant to this request to ground it in the current
+             implementation, architecture, and constraints.
+
+          2. Derive a short kebab-case description of the request from the
+             issue title/body (e.g. "improve-stt-error-handling").
+
+          3. Create the OpenSpec change using the openspec-propose skill /
+             process:
+             ``openspec new change "issue-$env:ISSUE_NUMBER-<short-description>" --goal "Issue #$env:ISSUE_NUMBER"``
+             then generate proposal.md, design.md, tasks.md, and any
+             specs/<capability>/spec.md deltas required by the schema. Follow
+             the openspec-propose skill's guidance for what each artifact
+             should contain. Do not implement any code changes at this stage
+             -- only the OpenSpec proposal artifacts.
+
+          4. Commit the new openspec/changes/<name>/ directory on the current
+             branch, with a commit message referencing the issue number
+             (openspec/ is gitignored, so use ``git add -f``).
+
+          5. Write a single line to the file at $statusFilePath`: either
+             "OK: <the exact OpenSpec change name you used>" on success, or
+             "SKIP: <reason>" if the request is too vague to turn into a
+             concrete proposal (in which case do not create any OpenSpec
+             change or commit).
+          "@ | Set-Content -Path $promptPath -Encoding utf8
+
+          Get-Content -Raw $promptPath | claude -p --dangerously-skip-permissions
+
+          if (-not (Test-Path $statusFilePath)) {
+            Write-Host "Claude did not write a status file."
+            exit 1
+          }
+          Get-Content $statusFilePath
+
+      - name: Push proposal commit (if any)
+        id: propose
+        shell: powershell
+        run: |
+          $statusFilePath = "$env:RUNNER_TEMP\claude-propose-status.txt"
+          $status = (Get-Content $statusFilePath -Raw).Trim()
+
+          if ($status.StartsWith("SKIP:")) {
+            Write-Host "Skipped: $status"
+            echo "proposed=false" >> $env:GITHUB_OUTPUT
+            exit 0
+          }
+
+          git push origin "HEAD:refs/heads/feature/${{ github.event.issue.number }}"
+          echo "proposed=true" >> $env:GITHUB_OUTPUT
+
+  # ---------------------------------------------------------------------
+  # Implementation (Codex, via the codex-implement skill run by Claude Code)
+  # ---------------------------------------------------------------------
+
+  implement:
+    needs: create-branch-and-propose
+    if: needs.create-branch-and-propose.outputs.proposed == 'true'
+    runs-on: [self-hosted, Windows, X64]
+    outputs:
+      implemented: ${{ steps.push.outputs.implemented }}
+      status: ${{ steps.push.outputs.status }}
+    steps:
+      - name: Check out feature branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: feature/${{ github.event.issue.number }}
+
+      - name: Implement the OpenSpec change (Claude Code delegates to Codex)
+        shell: powershell
+        env:
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          $promptPath = "$env:RUNNER_TEMP\claude-implement-prompt.txt"
+          $statusFilePath = "$env:RUNNER_TEMP\claude-implement-status.txt"
+
+          @"
+          You are checked out on feature/$env:ISSUE_NUMBER. Find the OpenSpec
+          change yourself under openspec/changes/issue-$env:ISSUE_NUMBER-*/.
+
+          Use the codex-implement skill to implement this change's pending
+          tasks -- that skill delegates the actual code editing to Codex and
+          has you review the result, rather than editing the code yourself.
+
+          Before invoking the skill, run:
+          1. `openspec status --change "<name>" --json` to see progress and
+             which artifacts contain the tasks.
+          2. `openspec instructions apply --change "<name>" --json` and read
+             every file listed under contextFiles, so you can brief Codex
+             accurately.
+
+          After the codex-implement skill finishes and you've reviewed its
+          diff:
+          - Run `npm run typecheck` and `npm run lint`, and if Rust code
+            under src-tauri/ was touched, also `cargo fmt --check` and
+            `cargo clippy` from src-tauri/. Fix anything they flag before
+            finishing.
+          - Commit the work (multiple commits are fine; commit
+            `openspec/changes/issue-$env:ISSUE_NUMBER-*/` with `git add -f`
+            since openspec/ is gitignored). Do not push -- that is handled
+            separately.
+          - Write a single line to $statusFilePath`: "OK" if every task is
+            complete, or "BLOCKED: <reason>" if you got stuck and need human
+            input (commit whatever coherent partial progress exists either
+            way).
+          "@ | Set-Content -Path $promptPath -Encoding utf8
+
+          Get-Content -Raw $promptPath | claude -p --dangerously-skip-permissions
+
+          if (-not (Test-Path $statusFilePath)) {
+            Write-Host "Claude did not write a status file."
+            exit 1
+          }
+          Get-Content $statusFilePath
+
+      - name: Push implementation commit(s)
+        id: push
+        shell: powershell
+        run: |
+          $statusFilePath = "$env:RUNNER_TEMP\claude-implement-status.txt"
+          $status = (Get-Content $statusFilePath -Raw).Trim()
+          Write-Host "Status: $status"
+
+          git push origin "HEAD:refs/heads/feature/${{ github.event.issue.number }}"
+          echo "implemented=true" >> $env:GITHUB_OUTPUT
+          echo "status=$status" >> $env:GITHUB_OUTPUT
+
+  # ---------------------------------------------------------------------
+  # CI runs automatically on the push above (ci.yml triggers on any push).
+  # Build confirmation: mirror feature/<N> onto build/<N> and watch build.yml
+  # ---------------------------------------------------------------------
+
+  build-confirm:
+    needs: [create-branch-and-propose, implement]
+    if: needs.implement.outputs.implemented == 'true'
+    runs-on: [self-hosted, Windows, X64]
+    outputs:
+      build_ok: ${{ steps.confirm.outputs.build_ok }}
+      run_url: ${{ steps.confirm.outputs.run_url }}
+    steps:
+      - name: Check out feature branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: feature/${{ github.event.issue.number }}
+          fetch-depth: 0
+
+      - name: Build confirmation loop (push to build/<N>, wait, fix-and-retry on failure)
+        id: confirm
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          # Uses the GitHub REST API directly via Invoke-RestMethod instead
+          # of the gh CLI: installing gh via winget on this self-hosted
+          # Windows service hung for 6 hours waiting on an MSI/UAC prompt
+          # that a non-interactive service session can never answer.
+          $repo = $env:GITHUB_REPOSITORY
+          $headers = @{
+            Authorization = "Bearer $env:GH_TOKEN"
+            Accept        = "application/vnd.github+json"
+          }
+
+          $maxAttempts = 2
+          $buildOk = $false
+          $runUrl = ""
+
+          for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+            Write-Host "=== Build attempt $attempt ==="
+
+            git commit --allow-empty -m "chore: trigger build for issue #$env:ISSUE_NUMBER (attempt $attempt)" | Out-Null
+            git push --force origin "HEAD:refs/heads/build/$env:ISSUE_NUMBER"
+            $sha = (git rev-parse HEAD).Trim()
+            Write-Host "Pushed SHA: $sha"
+
+            # Pushes made with the automatic GITHUB_TOKEN don't trigger other
+            # workflow runs (documented, to prevent infinite trigger loops),
+            # so the push above alone won't start build.yml. Dispatch it
+            # explicitly instead.
+            $dispatchTime = (Get-Date).ToUniversalTime()
+            $dispatchBody = @{ ref = "build/$env:ISSUE_NUMBER" } | ConvertTo-Json
+            Invoke-RestMethod -Method Post -Headers $headers -Uri "https://api.github.com/repos/$repo/actions/workflows/build.yml/dispatches" -Body $dispatchBody -ContentType "application/json"
+
+            $runId = $null
+            for ($i = 0; $i -lt 30; $i++) {
+              Start-Sleep -Seconds 10
+              try {
+                $resp = Invoke-RestMethod -Headers $headers -Uri "https://api.github.com/repos/$repo/actions/workflows/build.yml/runs?event=workflow_dispatch&branch=build/$env:ISSUE_NUMBER"
+                $candidate = $resp.workflow_runs | Where-Object { [datetime]$_.created_at -ge $dispatchTime.AddSeconds(-5) } | Select-Object -First 1
+                if ($candidate) {
+                  $runId = $candidate.id
+                  break
+                }
+              } catch {
+                Write-Host "Polling for run failed (will retry): $_"
+              }
+            }
+
+            if (-not $runId) {
+              Write-Host "No build run appeared for dispatch at $dispatchTime within timeout."
+              continue
+            }
+
+            $runUrl = "https://github.com/$repo/actions/runs/$runId"
+            Write-Host "Watching run: $runUrl"
+
+            do {
+              Start-Sleep -Seconds 20
+              $run = Invoke-RestMethod -Headers $headers -Uri "https://api.github.com/repos/$repo/actions/runs/$runId"
+              Write-Host "status=$($run.status)"
+            } while ($run.status -ne "completed")
+
+            Write-Host "conclusion=$($run.conclusion)"
+
+            if ($run.conclusion -eq "success") {
+              $buildOk = $true
+              break
+            }
+
+            if ($attempt -lt $maxAttempts) {
+              $failLog = "$env:RUNNER_TEMP\build-failure-$attempt.log"
+              $jobs = Invoke-RestMethod -Headers $headers -Uri "https://api.github.com/repos/$repo/actions/runs/$runId/jobs"
+              $failedJob = $jobs.jobs | Where-Object { $_.conclusion -eq "failure" } | Select-Object -First 1
+              if ($failedJob) {
+                Invoke-RestMethod -Headers $headers -Uri "https://api.github.com/repos/$repo/actions/jobs/$($failedJob.id)/logs" -OutFile $failLog
+              } else {
+                "No failed job found; run conclusion was $($run.conclusion)." | Set-Content -Path $failLog
+              }
+
+              $promptPath = "$env:RUNNER_TEMP\claude-buildfix-prompt.txt"
+              @"
+          The Tauri build for Issue #$env:ISSUE_NUMBER failed (attempt $attempt).
+          You are checked out on feature/$env:ISSUE_NUMBER. The failed job's
+          log is at: $failLog
+
+          Read that log, find the actual cause in the source it points to,
+          and fix it. Keep changes minimal and scoped to the build failure.
+          Commit your fix (do not push -- that is handled separately).
+          "@ | Set-Content -Path $promptPath -Encoding utf8
+
+              Get-Content -Raw $promptPath | claude -p --dangerously-skip-permissions
+            }
+          }
+
+          echo "build_ok=$($buildOk.ToString().ToLower())" >> $env:GITHUB_OUTPUT
+          echo "run_url=$runUrl" >> $env:GITHUB_OUTPUT
+
+          git push origin "HEAD:refs/heads/feature/$env:ISSUE_NUMBER"
+
+  # ---------------------------------------------------------------------
+  # PR: the only human gate (build download + verification)
+  # ---------------------------------------------------------------------
+
+  pr:
+    needs: [build-confirm]
+    if: needs.build-confirm.outputs.build_ok == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Create PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          RUN_URL: ${{ needs.build-confirm.outputs.run_url }}
+        run: |
+          BODY_FILE="$(mktemp)"
+          {
+            echo "Relates to #$ISSUE_NUMBER"
+            echo ""
+            echo "Build succeeded: $RUN_URL (download the installer artifact from that run)."
+            echo ""
+            echo "Please download and verify the build. Approve this PR once verified -- this PR is not auto-merged. Approving it triggers OpenSpec archiving; the release flow (docs/仕様/ブランチ・リリース戦略.md) picks up from feature/$ISSUE_NUMBER afterward."
+          } > "$BODY_FILE"
+
+          gh pr create \
+            --base main \
+            --head "build/$ISSUE_NUMBER" \
+            --title "Issue #$ISSUE_NUMBER: build ready for verification" \
+            --body-file "$BODY_FILE"
+
+  comment:
+    needs: [create-branch-and-propose, implement, build-confirm, pr]
+    if: always() && github.event_name == 'issues'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Comment on the issue
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        env:
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          PROPOSED: ${{ needs.create-branch-and-propose.outputs.proposed }}
+          IMPLEMENTED: ${{ needs.implement.result == 'success' && needs.implement.outputs.implemented }}
+          STATUS: ${{ needs.implement.outputs.status }}
+          BUILD_OK: ${{ needs.build-confirm.result == 'success' && needs.build-confirm.outputs.build_ok }}
+          RUN_URL: ${{ needs.build-confirm.outputs.run_url }}
+          PR_CREATED: ${{ needs.pr.result == 'success' }}
+        with:
+          script: |
+            const branch = `feature/${process.env.ISSUE_NUMBER}`;
+            const proposed = process.env.PROPOSED === 'true';
+            const implemented = process.env.IMPLEMENTED === 'true';
+            const status = process.env.STATUS || '';
+            const buildOk = process.env.BUILD_OK === 'true';
+            const runUrl = process.env.RUN_URL;
+            const prCreated = process.env.PR_CREATED === 'true';
+
+            let body;
+            if (!proposed) {
+              body = `Proposal step did not produce an OpenSpec change on \`${branch}\` (request may have been too vague). Check the workflow run logs.`;
+            } else if (!implemented) {
+              body = `Proposal created on \`${branch}\`, but the implementation step failed to run. Check the workflow run logs.`;
+            } else if (status.startsWith('BLOCKED')) {
+              body = `Implementation on \`${branch}\` is blocked: ${status}.\n\nWhatever partial progress was coherent has been committed and pushed. Please advise.`;
+            } else if (prCreated) {
+              body = `Implementation on \`${branch}\` complete. Build succeeded: ${runUrl}\n\nA PR is open for you to download the build and verify.`;
+            } else if (buildOk) {
+              body = `Implementation on \`${branch}\` complete. Build succeeded: ${runUrl}\n\nBut PR creation failed -- check the workflow run logs.`;
+            } else {
+              body = `Implementation on \`${branch}\` complete, but the build did not succeed after retries. Check the build.yml run logs and \`build/${process.env.ISSUE_NUMBER}\` for details.`;
+            }
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body,
+            });
+
+  # ---------------------------------------------------------------------
+  # PR approved -> OpenSpec archive
+  # ---------------------------------------------------------------------
+
+  archive-on-approval:
+    if: >-
+      github.event_name == 'pull_request_review' &&
+      github.event.review.state == 'approved' &&
+      startsWith(github.event.pull_request.head.ref, 'build/')
+    runs-on: [self-hosted, Windows, X64]
+    steps:
+      - name: Derive issue number from the PR's head branch
+        id: derive
+        shell: powershell
+        run: |
+          $issueNumber = "${{ github.event.pull_request.head.ref }}" -replace '^build/', ''
+          echo "issue_number=$issueNumber" >> $env:GITHUB_OUTPUT
+
+      - name: Check out feature branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: feature/${{ steps.derive.outputs.issue_number }}
+
+      - name: Archive the OpenSpec change with Claude Code
+        shell: powershell
+        env:
+          ISSUE_NUMBER: ${{ steps.derive.outputs.issue_number }}
+        run: |
+          $promptPath = "$env:RUNNER_TEMP\claude-archive-prompt.txt"
+
+          @"
+          A human just approved the build-verification PR for Issue
+          #$env:ISSUE_NUMBER (docs/仕様/Issue駆動開発フロー.md, OpenSpec
+          archive step). You are checked out on feature/$env:ISSUE_NUMBER.
+
+          Find the OpenSpec change under
+          openspec/changes/issue-$env:ISSUE_NUMBER-*/ and use the
+          openspec-archive-change skill to archive it. This is a
+          non-interactive automated run, so:
+          - Do not ask the user anything -- there is no one to answer.
+          - If delta specs exist and would need syncing, choose "sync now"
+            automatically.
+          - If artifacts or tasks are incomplete, proceed anyway (log what
+            was incomplete) rather than blocking.
+
+          Commit the result (`openspec/` is gitignored, use
+          ``git add -f -- openspec``) with a message referencing the issue
+          number. Do not push -- that is handled separately.
+          "@ | Set-Content -Path $promptPath -Encoding utf8
+
+          Get-Content -Raw $promptPath | claude -p --dangerously-skip-permissions
+
+          git push origin "HEAD:refs/heads/feature/$env:ISSUE_NUMBER"
+
+      - name: Comment on the issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ steps.derive.outputs.issue_number }}
+        shell: powershell
+        run: |
+          gh issue comment $env:ISSUE_NUMBER --body "OpenSpecアーカイブが完了しました。feature/$env:ISSUE_NUMBER から release/v<version> を分岐してリリースフローへ進められます(docs/仕様/ブランチ・リリース戦略.md)。"
