@@ -1,7 +1,7 @@
 ## 1. 実装
 
-- [ ] 1.1 `src/pages/app/components/ProviderWarning.tsx` のルート `div` に `h-full` を追加し、親パネル（`top-panel` / `middle-panel`）の高さいっぱいに広がるようにする
-- [ ] 1.2 `npm run typecheck` と `npm run lint` を実行し、変更がクリーンであることを確認する
+- [x] 1.1 `src/pages/app/components/ProviderWarning.tsx` のルート `div` に `h-full` を追加し、親パネル（`top-panel` / `middle-panel`）の高さいっぱいに広がるようにする
+- [x] 1.2 `npm run typecheck` と `npm run lint` を実行し、変更がクリーンであることを確認する
 
 ## 2. 動作確認
 
