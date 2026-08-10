@@ -53,6 +53,12 @@ Issue #32 は、この「枠」（オーバーレイウィンドウ）をユー�
 - [Risk] `set_window_height` の幅維持ロジックは `window.scale_factor()` の取得に失敗する可能性がある（マルチモニター環境でのDPI変化等） → 取得失敗時はコマンド全体をエラーとして返し（既存の `Result<(), String>` の枠組みをそのまま使う）、呼び出し元の `try/catch`（`useWindowResize.resizeWindow`）が既にエラーをログして握りつぶす実装になっているため、既存のフォールバック挙動を変更せずに済む。
 - [Trade-off] 手動リサイズしたウィンドウサイズはアプリ再起動で失われる（`width: 600, height: 54` の初期値に戻る）→ Non-Goalとして許容。必要であれば別Issueで永続化を検討する。
 
+## Addendum (動作検証で発覚した見落とし)
+
+ユーザー動作検証で、縦方向の手動リサイズだけが直後に巻き戻る不具合が見つかった。原因は当初の設計（Decisions）が「幅の巻き戻り防止」しか考慮しておらず、`useWindowResize`（`src/hooks/useWindow.ts`）の `MutationObserver` が `document.body` の変化のたびに（ポップオーバー未展開時）`resizeWindow(false)` を呼び、高さを常に `240px` へ強制していた点を見落としていたため。この呼び出しは幅だけでなく高さそのものも上書きする設計だったので、`resizable: true` にした時点で手動の高さリサイズは原理的に成立しない状態だった。
+
+対応として、`window.onResized` を使い「`resizeWindow` 経由のプログラム的な変更」か「ユーザーのOSレベルドラッグ」かを区別するフラグを追加し、ユーザーが手動リサイズした後は `MutationObserver` 由来の自動 collapse を抑制するようにした（tasks.md §5）。ポップオーバーの開閉など明示的な `resizeWindow` 呼び出しがあれば、その時点で自動調整に制御が戻る。collapsed/expanded の値（240/600px）やその呼び出しトリガー自体は変更していない（Non-Goals を維持）。
+
 ## Migration Plan
 
 - 設定ファイル（`tauri.conf.json`）とRustコマンド実装の変更のみで、データ移行は不要。
