@@ -74,8 +74,14 @@ pub fn center_window_completely(window: &WebviewWindow) -> Result<(), Box<dyn st
 pub fn set_window_height(window: tauri::WebviewWindow, height: u32) -> Result<(), String> {
     use tauri::{LogicalSize, Size};
 
-    // Simply set the window size with fixed width and new height
-    let new_size = LogicalSize::new(600.0, height as f64);
+    let scale_factor = window
+        .scale_factor()
+        .map_err(|e| format!("Failed to get window scale factor: {}", e))?;
+    let current_size = window
+        .inner_size()
+        .map_err(|e| format!("Failed to get window inner size: {}", e))?;
+    let logical_size = current_size.to_logical::<f64>(scale_factor);
+    let new_size = LogicalSize::new(logical_size.width, height as f64);
     window
         .set_size(Size::Logical(new_size))
         .map_err(|e| format!("Failed to resize window: {}", e))?;
