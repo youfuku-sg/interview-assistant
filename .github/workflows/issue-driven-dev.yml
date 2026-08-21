@@ -266,8 +266,9 @@ jobs:
           echo "status=$status" >> $env:GITHUB_OUTPUT
 
   # ---------------------------------------------------------------------
-  # CI runs automatically on the push above (ci.yml triggers on any push).
-  # Build confirmation: mirror feature/<N> onto build/<N> and watch build.yml
+  # Build confirmation: dispatch build.yml directly against feature/<N>
+  # (no separate build/<name> mirror branch -- removed 2026-08-22 in favor
+  # of just building the feature branch itself on every confirmation pass).
   # ---------------------------------------------------------------------
 
   build-confirm:
@@ -284,7 +285,7 @@ jobs:
           ref: feature/${{ github.event.issue.number }}
           fetch-depth: 0
 
-      - name: Build confirmation loop (push to build/<N>, wait, fix-and-retry on failure)
+      - name: Build confirmation loop (dispatch build.yml, wait, fix-and-retry on failure)
         id: confirm
         shell: powershell
         env:
@@ -296,6 +297,7 @@ jobs:
           # Windows service hung for 6 hours waiting on an MSI/UAC prompt
           # that a non-interactive service session can never answer.
           $repo = $env:GITHUB_REPOSITORY
+          $branch = "feature/$env:ISSUE_NUMBER"
           $headers = @{
             Authorization = "Bearer $env:GH_TOKEN"
             Accept        = "application/vnd.github+json"
@@ -308,24 +310,19 @@ jobs:
           for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
             Write-Host "=== Build attempt $attempt ==="
 
-            git commit --allow-empty -m "chore: trigger build for issue #$env:ISSUE_NUMBER (attempt $attempt)" | Out-Null
-            git push --force origin "HEAD:refs/heads/build/$env:ISSUE_NUMBER"
-            $sha = (git rev-parse HEAD).Trim()
-            Write-Host "Pushed SHA: $sha"
-
             # Pushes made with the automatic GITHUB_TOKEN don't trigger other
             # workflow runs (documented, to prevent infinite trigger loops),
-            # so the push above alone won't start build.yml. Dispatch it
-            # explicitly instead.
+            # so build.yml won't start on its own from the implement job's
+            # push (or a fix commit's push below). Dispatch it explicitly.
             $dispatchTime = (Get-Date).ToUniversalTime()
-            $dispatchBody = @{ ref = "build/$env:ISSUE_NUMBER" } | ConvertTo-Json
+            $dispatchBody = @{ ref = $branch } | ConvertTo-Json
             Invoke-RestMethod -Method Post -Headers $headers -Uri "https://api.github.com/repos/$repo/actions/workflows/build.yml/dispatches" -Body $dispatchBody -ContentType "application/json"
 
             $runId = $null
             for ($i = 0; $i -lt 30; $i++) {
               Start-Sleep -Seconds 10
               try {
-                $resp = Invoke-RestMethod -Headers $headers -Uri "https://api.github.com/repos/$repo/actions/workflows/build.yml/runs?event=workflow_dispatch&branch=build/$env:ISSUE_NUMBER"
+                $resp = Invoke-RestMethod -Headers $headers -Uri "https://api.github.com/repos/$repo/actions/workflows/build.yml/runs?event=workflow_dispatch&branch=$branch"
                 $candidate = $resp.workflow_runs | Where-Object { [datetime]$_.created_at -ge $dispatchTime.AddSeconds(-5) } | Select-Object -First 1
                 if ($candidate) {
                   $runId = $candidate.id
@@ -381,13 +378,14 @@ jobs:
               Get-Content -Raw $promptPath | claude -p `
                 --allowedTools "Read,Write,Edit,Bash(git status),Bash(git diff*),Bash(git add*),Bash(git commit*),Bash(npm run*),Bash(cargo *)" `
                 --permission-mode acceptEdits
+
+              # Push the fix now so the next attempt's dispatch builds it.
+              git push origin "HEAD:refs/heads/$branch"
             }
           }
 
           echo "build_ok=$($buildOk.ToString().ToLower())" >> $env:GITHUB_OUTPUT
           echo "run_url=$runUrl" >> $env:GITHUB_OUTPUT
-
-          git push origin "HEAD:refs/heads/feature/$env:ISSUE_NUMBER"
 
   # ---------------------------------------------------------------------
   # PR: the only human gate (build download + verification)
@@ -421,7 +419,7 @@ jobs:
 
           url="$(gh pr create \
             --base develop \
-            --head "build/$ISSUE_NUMBER" \
+            --head "feature/$ISSUE_NUMBER" \
             --title "Issue #$ISSUE_NUMBER: build ready for verification" \
             --body-file "$BODY_FILE")"
           echo "pr_url=$url" >> "$GITHUB_OUTPUT"
@@ -473,7 +471,7 @@ jobs:
             } else if (status.startsWith('BLOCKED')) {
               body = `Implementation on \`${branch}\` is blocked: ${status}.\n\nWhatever partial progress was coherent has been committed and pushed. Please advise.`;
             } else {
-              body = `Implementation on \`${branch}\` complete, but the build did not succeed after retries. Check the build.yml run logs and \`build/${process.env.ISSUE_NUMBER}\` for details.`;
+              body = `Implementation on \`${branch}\` complete, but the build did not succeed after retries. Check the build.yml run logs and \`${branch}\` for details.`;
             }
 
             await github.rest.issues.createComment({
@@ -492,22 +490,29 @@ jobs:
       github.event_name == 'pull_request' &&
       github.event.pull_request.merged == true &&
       github.event.pull_request.base.ref == 'develop' &&
-      startsWith(github.event.pull_request.head.ref, 'build/')
+      startsWith(github.event.pull_request.head.ref, 'feature/')
     runs-on: [self-hosted, Windows, X64]
     steps:
+      # `feature/*` also covers manually-named branches (e.g.
+      # feature/some-refactor) that aren't part of this Issue pipeline --
+      # only proceed when the suffix is purely numeric (an Issue number).
       - name: Derive issue number from the PR's head branch
         id: derive
         shell: powershell
         run: |
-          $issueNumber = "${{ github.event.pull_request.head.ref }}" -replace '^build/', ''
+          $issueNumber = "${{ github.event.pull_request.head.ref }}" -replace '^feature/', ''
+          $isIssueNumber = $issueNumber -match '^\d+$'
           echo "issue_number=$issueNumber" >> $env:GITHUB_OUTPUT
+          echo "is_issue_number=$($isIssueNumber.ToString().ToLower())" >> $env:GITHUB_OUTPUT
 
       - name: Check out feature branch
+        if: steps.derive.outputs.is_issue_number == 'true'
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: feature/${{ steps.derive.outputs.issue_number }}
 
       - name: Archive the OpenSpec change with Claude Code
+        if: steps.derive.outputs.is_issue_number == 'true'
         shell: powershell
         env:
           ISSUE_NUMBER: ${{ steps.derive.outputs.issue_number }}
@@ -544,6 +549,7 @@ jobs:
           git push origin "HEAD:refs/heads/feature/$env:ISSUE_NUMBER"
 
       - name: Comment on the issue
+        if: steps.derive.outputs.is_issue_number == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           ISSUE_NUMBER: ${{ steps.derive.outputs.issue_number }}
