@@ -15,6 +15,11 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          # openwiki/ (and AGENTS.md/CLAUDE.md) live on develop, not main --
+          # main is kept stripped of AI-tooling files on release (see
+          # docs/仕様/ブランチ・リリース戦略.md §3.1/§7).
+          ref: develop
 
       - name: Set up Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -43,6 +48,7 @@ jobs:
       - name: Create OpenWiki update pull request
         uses: peter-evans/create-pull-request@22a9089034f40e5a961c8808d113e2c98fb63676 # v7
         with:
+          base: develop
           add-paths: |
             openwiki
             AGENTS.md

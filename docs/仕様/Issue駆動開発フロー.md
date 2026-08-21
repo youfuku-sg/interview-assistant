@@ -20,12 +20,13 @@
 - ユーザーが開発フロー中に直接手を動かすのは、各フェーズ末尾の PR レビュー（spec フェーズ: 提案内容の確認、dev フェーズ: ビルド済み成果物の動作検証）のみとする。ソースコードそのもののレビューはユーザーの作業範囲に含めない。それ以外（提案作成、実装、CI、ビルド）は AI 主導で進める
 - dev フェーズの動作検証（5.4 相当）はユーザー本人にしかできない直列のボトルネックである。複数 Issue の spec/dev フェーズが並行して進んでいても、動作検証は 1 件ずつ順番に処理する
 - dev フェーズのビルド確認は `feature/*` 相当（`dev/*`）への毎コミットで重いビルドが走らないよう、専用の `build/<name>` ブランチへの push をトリガーに行う。`build/<name>` の詳細は [ブランチ・リリース戦略](ブランチ・リリース戦略.md) を参照
-- Claude Code・Codex を呼び出すステップ（OpenSpec 提案作成・実装など）は、GitHub-hosted runner ではなく自己ホストランナー（Windows）上で実行する。Claude Code・Codex はサブスクリプション契約の CLI ログインで使っており、その Windows 機にインストール・認証済みの CLI をそのまま利用したいため。API トークン課金（`CLAUDE_CODE_OAUTH_TOKEN` / `CODEX_AUTH_JSON` 等を GitHub Secrets に置く方式）は当面保留とする（自己ホストでうまくいかない場合はこちらへの切り替えを再検討する）。一方、AI を使わない部分（release フェーズ＝§3 の 11〜16、既存の `publish-tauri` によるビルド等）は引き続き GitHub-hosted runner でよい
+- Claude Code・Codex を呼び出すステップ（OpenSpec 提案作成・実装など）は、GitHub-hosted runner ではなく自己ホストランナー（Windows）上で実行する。Claude Code・Codex はサブスクリプション契約の CLI ログインで使っており、その Windows 機にインストール・認証済みの CLI をそのまま利用したいため。API トークン課金（`CLAUDE_CODE_OAUTH_TOKEN` / `CODEX_AUTH_JSON` 等を GitHub Secrets に置く方式）は当面保留とする（自己ホストでうまくいかない場合はこちらへの切り替えを再検討する）。一方、AI を使わない部分（release フェーズ＝§3 の 11〜17、既存の `publish-tauri` によるビルド等）は引き続き GitHub-hosted runner でよい
+- `feature/<Issue番号>` は `develop`（`main` からではなく）から分岐する。`develop` には `.claude`/`.codex`/`openspec`/`openwiki`/`docs`/`AGENTS.md`/`CLAUDE.md` など AI 開発ツール関連のファイル一式を含める。`main` はこれらを含まない、リリース済みの最小構成を保つ（[ブランチ・リリース戦略](ブランチ・リリース戦略.md) §3.1 参照）。dev PR（§3 の 8）も base=`develop` とする
 
 ## 3. 開発フロー（全体像）
 
 ```text
-main
+develop
   ↓
   1. Issue 起票（要望をざっくり書く。ユーザーが書く）
         ↓
@@ -36,22 +37,23 @@ feature/<Issue番号>  ……………………………… 提案 + 実装（�
   5. 実装（Codex が一次実装）
   6. CI（typecheck / lint / clippy）
   7. ビルド確認（AI が build/<Issue番号> へ push し、実ビルドが成功するか確認。失敗したら 5 に戻って修正、成功するまでループ）
-  8. PR 作成（base=main, head=build/<Issue番号>。人間による唯一のレビューゲート＝動作チェック、マージしない）
-  9. ユーザー動作検証・承認
-  10. OpenSpec アーカイブ（`openspec-archive-change`／`/opsx:archive` で対応する change を `openspec/specs/` に反映）
-        ↓（承認後、release/<version> を最新の main から分岐し、feature/<Issue番号> をそこへ merge）
+  8. PR 作成（base=develop, head=build/<Issue番号>。人間による唯一のゲート＝動作チェック後に develop へマージする）
+  9. ユーザー動作検証 → 問題なければ PR を develop へマージ
+  10. OpenSpec アーカイブ（9 のマージをトリガーに自動実行。`openspec-archive-change`／`/opsx:archive` で対応する change を `openspec/specs/` に反映）
+        ↓（アーカイブ後、release/<version> を最新の main から分岐し、feature/<Issue番号> をそこへ merge）
 release/v<version>  ……………………………… リリースフロー（[ブランチ・リリース戦略](ブランチ・リリース戦略.md) が正）
   11. 最新の main から release/v<version> を分岐し、feature/<Issue番号> を merge する
   12. package.json・src-tauri/Cargo.toml・src-tauri/tauri.conf.json のバージョンを更新する
   13. CHANGELOG.md に対応するエントリを追記する
-  14. main へマージする（通常の git merge。squash はここまでの正式なマージ履歴を潰すため使わない）
-  15. v<version> タグを作成して push する → このタグ push が GitHub Actions を自動起動する（既存 `ci.yml` の `publish-tauri` は既に `refs/tags/*` の push で動く条件になっているため、実装変更は不要）。ビルドが自動で走り、成果物が draft release に添付される。成果物の動作確認は 8 の PR で既に済んでいるため、ここでは行わない
-  16. release/v<version> ブランチを削除する
+  14. AI 開発ツール関連のファイル（`.claude`, `.codex`, `openspec`, `AGENTS.md`, `CLAUDE.md`, `docs`, `openwiki`）を release ブランチ上で取り除く（`.github/workflows/`・`CHANGELOG.md` は対象外）
+  15. main へマージする（通常の git merge。squash はここまでの正式なマージ履歴を潰すため使わない）
+  16. v<version> タグを作成して push する → このタグ push が GitHub Actions を自動起動する（既存 `ci.yml` の `publish-tauri` は既に `refs/tags/*` の push で動く条件になっているため、実装変更は不要）。ビルドが自動で走り、成果物が draft release に添付される。成果物の動作確認は 8 の PR で既に済んでいるため、ここでは行わない
+  17. release/v<version> ブランチを削除する
   ↓
 main
 ```
 
-人間が直接手を動かすのは、**8 の PR レビュー（動作検証）1 箇所のみ**である。Issue 起票（1）を除けば、OpenWiki 更新（2）から提案（4）・実装・CI・ビルド確認（5〜7）までは人間の承認を待たず自動で連続実行する。PR（8）は **レビューゲートであり、マージしない**。承認は「次のステップ（OpenSpec アーカイブ・リリースフロー）へ進んでよい」という合図として扱う。実際に `main` へ内容が入るのは、`release/v<version>` が上記 11〜16（詳細は [ブランチ・リリース戦略](ブランチ・リリース戦略.md) §3.4/§4/§5/§7 を正とする）を経て `main` にマージされたときのみである。
+人間が直接手を動かすのは、**8〜9 の PR レビュー（動作検証・マージ）1 箇所のみ**である。Issue 起票（1）を除けば、OpenWiki 更新（2）から提案（4）・実装・CI・ビルド確認（5〜7）までは人間の承認を待たず自動で連続実行する。PR（8）は develop 向けの通常の PR であり、動作検証（9）ができたらユーザー自身がこの PR を `develop` へマージする。**このマージが「次のステップ（OpenSpec アーカイブ・リリースフロー）へ進んでよい」という合図**であり、`archive-on-approval` ジョブはこのマージイベント（`pull_request: closed, merged==true`）をトリガーに起動する（承認レビューではなくマージそのものをトリガーにしているのは、Issue #30 で「承認ではなくマージした」ことにより自動アーカイブが起動しなかった問題を踏まえた設計）。実際に `main` へ内容が入るのは、`release/v<version>` が上記 11〜17（詳細は [ブランチ・リリース戦略](ブランチ・リリース戦略.md) §3.4/§4/§5/§7 を正とする）を経て `main` にマージされたときのみであり、`develop` 自体は `main` へ直接マージされない。
 
 ## 4. spec フェーズ（提案）
 
@@ -184,3 +186,4 @@ main
 - 2026-08-05: AI レビュー（4.4, 5.2）のループ上限回数を **3 ラウンド**に決定し、未決事項から除外（既存 `issue-propose.yml`/`issue-implement.yml` の実装で使われている値と揃えた）。3 ラウンドで合意に至らない場合は無限ループさせず、未合意である旨を明記したうえで次のステップ（人間レビュー）へ進む旨を §2・4.4・5.2 に明記
 - 2026-08-05: ステップ 16 の「手動実行または v<version> タグ push」という記述を修正。この時点ではタグがまだ存在せず（タグ作成は 18）、既存 `ci.yml` の `publish-tauri` は `workflow_dispatch` か `refs/tags/*` の push でしか動かないため、実際に使えるのは手動実行のみである旨を明記。あわせて、release フェーズが `main` を基準に取り直す設計と「11 で検証済みだから動作確認を省略する」という判断の間に残るずれのリスク、および実装時にワークフロー YAML 内の旧番号コメントを更新する必要がある旨を未決事項に追加
 - 2026-08-10: AI 同士が指摘を出し合い合意を取るまでループする自動レビュー工程（旧 4.4「AI レビュー（提案）」・旧 5.2「AI レビュー（コード）」）を廃止した。Issue #16 での実運用で承認ゲート検知の自動化不備・並列レビュー→再トリガーのワークフローバグに直面し、その反省を踏まえて設計した後継の `feature/<Issue番号>` 単一パイプライン案（未マージ、`issue-driven-dev.yml`）でも TEST〜TEST8（2026-08-06〜07、8 回中成功 1 回）の実行で機構自体が安定して機能しなかったため、この仕組みへの依存をやめる判断とした。§3 の全体像から該当ステップを削除してステップ番号を詰め直し（spec フェーズは 4.1〜4.4、dev フェーズは 5.1〜5.5 に再編）、§2 前提・§6 役割分担・§7 GitHub Actions 化方針・§8 未決事項の関連記述も合わせて整理・削除した。提案・実装の品質担保は、各フェーズ末尾の人間レビュー PR と通常の CI に委ねる（§8 に、既存 `/code-review` の位置づけを新たな未決事項として追加）。あわせて §8 の release フェーズ関連項目に残っていた古いステップ番号参照のずれ（2026-08-05 のアーカイブステップ追加時に追随できていなかったもの）も修正し、既に解消済みだった旧ワークフロー番号コメントに関する項目は削除した
+- 2026-08-22: `develop` ブランチを本格導入し、`feature/<Issue番号>` の分岐元・dev PR（§3 の 8）の base を `main` から `develop` に変更した（§2, §3）。理由: 参考にした別案件（`sample/.github` にコピーしたワークフロー群）が develop（AI開発ツール一式込み）/main（本番相当、AI関連ファイルを除いた最小構成）の分離を採用しており、これを踏襲することにした。あわせて `archive-on-approval` のトリガーを PR レビュー承認（`pull_request_review: approved`）から **PR マージ**（develop への実マージ）に変更した。develop 宛の dev PR は今後実際にマージされる運用になるため、マージそのものをアーカイブの合図にする方が実態に合っており、Issue #30 で「Approve ではなく Merge ボタンを押した」ことにより自動アーカイブが起動しなかった問題も構造的に解消する。release フェーズ（11〜17、旧 11〜16 から1ステップ増）に、main へマージする前に AI 開発ツール関連ファイル（`.claude`, `.codex`, `openspec`, `AGENTS.md`, `CLAUDE.md`, `docs`, `openwiki`）を取り除くステップ（新14）を追加した。詳細は [ブランチ・リリース戦略](ブランチ・リリース戦略.md) の同日付エントリを参照。§4 以降（spec/dev 2 フェーズの詳細・§6 役割分担）は依然として旧 spec/dev 二段階構成のままで、今回も対象外とした（要フォローアップ）

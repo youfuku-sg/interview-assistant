@@ -5,6 +5,12 @@ name: Issue → Dev (feature branch, self-hosted)
 # implementation. Replaces issue-spec-phase.yml and issue-implement.yml
 # (the earlier spec/<N> -> human approval -> dev/<N> two-phase design).
 #
+# feature/<Issue番号> branches from `develop` (not `main`) and the dev PR
+# (base=develop) is a normal PR that gets merged, not just approved --
+# merging it is what triggers OpenSpec archiving (archive-on-approval).
+# `develop` carries the full dev/AI-tooling file set; `main` stays stripped
+# of it (see docs/仕様/ブランチ・リリース戦略.md §3.1/§7).
+#
 # All steps from Issue-opened through PR creation are chained via `needs:`
 # within a single workflow run -- there is nothing to retrigger, which avoids
 # the push-retrigger bug class the earlier AI-review-loop design hit.
@@ -17,8 +23,8 @@ name: Issue → Dev (feature branch, self-hosted)
 on:
   issues:
     types: [opened]
-  pull_request_review:
-    types: [submitted]
+  pull_request:
+    types: [closed]
 
 permissions:
   contents: write
@@ -42,12 +48,14 @@ jobs:
       branch: feature/${{ github.event.issue.number }}
       proposed: ${{ steps.propose.outputs.proposed }}
     steps:
-      - name: Check out main
+      - name: Check out develop
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: develop
 
-      - name: Refresh OpenWiki for this issue (not committed to main)
+      - name: Refresh OpenWiki for this issue (not committed to develop)
         # Best-effort: if this fails (missing/expired secret, network, etc.)
-        # fall back to whatever openwiki/ already exists on main rather than
+        # fall back to whatever openwiki/ already exists on develop rather than
         # blocking the whole pipeline over a freshness nice-to-have.
         shell: powershell
         env:
@@ -60,10 +68,10 @@ jobs:
             $env:OPENWIKI_MODEL_ID = "z-ai/glm-5.2"
             openwiki code --update --print
             if ($LASTEXITCODE -ne 0) {
-              Write-Host "OpenWiki update exited with code $LASTEXITCODE; continuing with the existing openwiki/ snapshot from main."
+              Write-Host "OpenWiki update exited with code $LASTEXITCODE; continuing with the existing openwiki/ snapshot from develop."
             }
           } catch {
-            Write-Host "OpenWiki update threw an exception; continuing with the existing openwiki/ snapshot from main: $_"
+            Write-Host "OpenWiki update threw an exception; continuing with the existing openwiki/ snapshot from develop: $_"
           }
           exit 0
 
@@ -408,11 +416,11 @@ jobs:
             echo ""
             echo "Build succeeded: $RUN_URL (download the installer artifact from that run)."
             echo ""
-            echo "Please download and verify the build. Approve this PR once verified -- this PR is not auto-merged. Approving it triggers OpenSpec archiving; the release flow (docs/仕様/ブランチ・リリース戦略.md) picks up from feature/$ISSUE_NUMBER afterward."
+            echo "Please download and verify the build, then merge this PR into develop once verified. Merging it triggers OpenSpec archiving; the release flow (docs/仕様/ブランチ・リリース戦略.md) picks up feature/$ISSUE_NUMBER from develop afterward."
           } > "$BODY_FILE"
 
           url="$(gh pr create \
-            --base main \
+            --base develop \
             --head "build/$ISSUE_NUMBER" \
             --title "Issue #$ISSUE_NUMBER: build ready for verification" \
             --body-file "$BODY_FILE")"
@@ -476,13 +484,14 @@ jobs:
             });
 
   # ---------------------------------------------------------------------
-  # PR approved -> OpenSpec archive
+  # dev PR merged into develop -> OpenSpec archive
   # ---------------------------------------------------------------------
 
-  archive-on-approval:
+  archive-on-merge:
     if: >-
-      github.event_name == 'pull_request_review' &&
-      github.event.review.state == 'approved' &&
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.merged == true &&
+      github.event.pull_request.base.ref == 'develop' &&
       startsWith(github.event.pull_request.head.ref, 'build/')
     runs-on: [self-hosted, Windows, X64]
     steps:
@@ -506,9 +515,10 @@ jobs:
           $promptPath = "$env:RUNNER_TEMP\claude-archive-prompt.txt"
 
           @"
-          A human just approved the build-verification PR for Issue
-          #$env:ISSUE_NUMBER (docs/仕様/Issue駆動開発フロー.md, OpenSpec
-          archive step). You are checked out on feature/$env:ISSUE_NUMBER.
+          A human just merged the build-verification PR for Issue
+          #$env:ISSUE_NUMBER into develop (docs/仕様/Issue駆動開発フロー.md,
+          OpenSpec archive step). You are checked out on
+          feature/$env:ISSUE_NUMBER.
 
           Find the OpenSpec change under
           openspec/changes/issue-$env:ISSUE_NUMBER-*/ and use the
