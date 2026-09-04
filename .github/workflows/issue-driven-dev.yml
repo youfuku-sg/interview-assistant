@@ -5,11 +5,16 @@ name: Issue → Dev (feature branch, self-hosted)
 # implementation. Replaces issue-spec-phase.yml and issue-implement.yml
 # (the earlier spec/<N> -> human approval -> dev/<N> two-phase design).
 #
-# feature/<Issue番号> branches from `develop` (not `main`) and the dev PR
-# (base=develop) is a normal PR that gets merged, not just approved --
-# merging it is what triggers OpenSpec archiving (archive-on-approval).
-# `develop` carries the full dev/AI-tooling file set; `main` stays stripped
-# of it (see docs/仕様/ブランチ・リリース戦略.md §3.1/§7).
+# feature/<Issue番号> branches from `develop` (not `main`) and the dev PR is
+# opened as a draft against `integration` as soon as the branch exists,
+# flipped to ready-for-review once a build passes, and merged (not just
+# approved) -- merging it is what triggers OpenSpec archiving
+# (archive-on-approval). `integration` is a fixed branch that is never
+# deleted/recreated per issue; it exists solely as the dev PR merge target
+# and OpenSpec archive location. `develop` carries the full dev/AI-tooling
+# file set and is kept current by release.yml merging each release branch
+# back into it; `main` stays stripped of it (see
+# docs/仕様/ブランチ・リリース戦略.md §3.1/§7).
 #
 # All steps from Issue-opened through PR creation are chained via `needs:`
 # within a single workflow run -- there is nothing to retrigger, which avoids
@@ -89,6 +94,25 @@ jobs:
           }
 
           git push origin "HEAD:refs/heads/feature/${{ github.event.issue.number }}"
+
+      # Open the dev PR as a draft right away, rather than waiting until the
+      # build succeeds -- this way there is a single, stable PR the user can
+      # watch from the start. The build-confirm/pr jobs below attach the
+      # installer artifact and flip it to "ready for review" once a build
+      # passes; nothing here assumes the OpenSpec proposal or implementation
+      # steps have run yet.
+      - name: Create draft dev PR (feature/<N> -> integration)
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          gh pr create --repo "${{ github.repository }}" `
+            --draft `
+            --base integration `
+            --head "feature/$env:ISSUE_NUMBER" `
+            --title "feature/$env:ISSUE_NUMBER" `
+            --body "Refs #$env:ISSUE_NUMBER`n`nOpenSpec提案・実装・ビルド確認を進めています。ビルドが成功次第、成果物を添付してReady for reviewに切り替えます。"
 
       # Issue title/body is untrusted third-party input (anyone who can open
       # an issue controls this text). Save it to a file first and hand the
@@ -396,32 +420,48 @@ jobs:
     if: needs.build-confirm.outputs.build_ok == 'true'
     runs-on: ubuntu-latest
     outputs:
-      pr_url: ${{ steps.create.outputs.pr_url }}
+      pr_url: ${{ steps.ready.outputs.pr_url }}
     steps:
       - name: Check out repository
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - name: Create PR
-        id: create
+      # The draft PR (feature/<N> -> integration) already exists from the
+      # create-branch-and-propose job. Attach the build info as a comment and
+      # flip it to ready for review -- do not `gh pr create` here, that PR
+      # already exists. Fall back to creating one only if it's somehow
+      # missing (e.g. the earlier draft-PR step failed).
+      - name: Attach build info and mark PR ready for review
+        id: ready
         env:
           GH_TOKEN: ${{ github.token }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
           RUN_URL: ${{ needs.build-confirm.outputs.run_url }}
         run: |
+          BRANCH="feature/$ISSUE_NUMBER"
           BODY_FILE="$(mktemp)"
           {
-            echo "Relates to #$ISSUE_NUMBER"
-            echo ""
             echo "Build succeeded: $RUN_URL (download the installer artifact from that run)."
             echo ""
-            echo "Please download and verify the build, then merge this PR into develop once verified. Merging it triggers OpenSpec archiving; the release flow (docs/仕様/ブランチ・リリース戦略.md) picks up feature/$ISSUE_NUMBER from develop afterward."
+            echo "Please download and verify the build, then merge this PR into integration once verified. Merging it triggers OpenSpec archiving; the release flow (docs/仕様/ブランチ・リリース戦略.md) picks up integration afterward."
           } > "$BODY_FILE"
 
-          url="$(gh pr create \
-            --base develop \
-            --head "feature/$ISSUE_NUMBER" \
-            --title "Issue #$ISSUE_NUMBER: build ready for verification" \
-            --body-file "$BODY_FILE")"
+          number="$(gh pr list --repo "${{ github.repository }}" --head "$BRANCH" --base integration --state open --json number --jq '.[0].number')"
+
+          if [ -z "$number" ]; then
+            echo "No open draft PR found for $BRANCH -> integration; creating one."
+            url="$(gh pr create \
+              --repo "${{ github.repository }}" \
+              --base integration \
+              --head "$BRANCH" \
+              --title "Issue #$ISSUE_NUMBER: build ready for verification" \
+              --body "Relates to #$ISSUE_NUMBER
+
+          $(cat "$BODY_FILE")")"
+          else
+            gh pr ready "$number" --repo "${{ github.repository }}"
+            gh pr comment "$number" --repo "${{ github.repository }}" --body-file "$BODY_FILE"
+            url="$(gh pr view "$number" --repo "${{ github.repository }}" --json url --jq .url)"
+          fi
           echo "pr_url=$url" >> "$GITHUB_OUTPUT"
 
   comment:
@@ -482,14 +522,14 @@ jobs:
             });
 
   # ---------------------------------------------------------------------
-  # dev PR merged into develop -> OpenSpec archive
+  # dev PR merged into integration -> OpenSpec archive
   # ---------------------------------------------------------------------
 
   archive-on-merge:
     if: >-
       github.event_name == 'pull_request' &&
       github.event.pull_request.merged == true &&
-      github.event.pull_request.base.ref == 'develop' &&
+      github.event.pull_request.base.ref == 'integration' &&
       startsWith(github.event.pull_request.head.ref, 'feature/')
     runs-on: [self-hosted, Windows, X64]
     steps:
@@ -505,11 +545,15 @@ jobs:
           echo "issue_number=$issueNumber" >> $env:GITHUB_OUTPUT
           echo "is_issue_number=$($isIssueNumber.ToString().ToLower())" >> $env:GITHUB_OUTPUT
 
-      - name: Check out feature branch
+      # integration is the fixed, reused archive branch (docs/仕様/ブランチ・
+      # リリース戦略.md §3.1) -- it already has the just-merged feature content,
+      # so the archive commit is added directly on integration rather than on
+      # the feature branch.
+      - name: Check out integration
         if: steps.derive.outputs.is_issue_number == 'true'
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          ref: feature/${{ steps.derive.outputs.issue_number }}
+          ref: integration
 
       - name: Archive the OpenSpec change with Claude Code
         if: steps.derive.outputs.is_issue_number == 'true'
@@ -521,9 +565,8 @@ jobs:
 
           @"
           A human just merged the build-verification PR for Issue
-          #$env:ISSUE_NUMBER into develop (docs/仕様/Issue駆動開発フロー.md,
-          OpenSpec archive step). You are checked out on
-          feature/$env:ISSUE_NUMBER.
+          #$env:ISSUE_NUMBER into integration (docs/仕様/Issue駆動開発フロー.md,
+          OpenSpec archive step). You are checked out on integration.
 
           Find the OpenSpec change under
           openspec/changes/issue-$env:ISSUE_NUMBER-*/ and use the
@@ -546,7 +589,34 @@ jobs:
             --allowedTools "Skill,Read,Bash(git status),Bash(mkdir *),Bash(git mv*),Bash(git add -f*),Bash(git commit*),Bash(openspec *)" `
             --permission-mode acceptEdits
 
-          git push origin "HEAD:refs/heads/feature/$env:ISSUE_NUMBER"
+          git push origin HEAD:refs/heads/integration
+
+      # release.yml は `pull_request: closed` ではなく workflow_dispatch のみを
+      # トリガーにしている(このアーカイブpushより先に走ってしまう競合を避けるため。
+      # release.yml 冒頭のコメント参照)。アーカイブ済みの integration を確定させた
+      # 直後のこのタイミングで明示的にdispatchすることで、実行順序を保証する。
+      # release.yml のマージ対象は常に integration 固定なので、渡す入力は完了
+      # コメント用の issue_number だけでよい。
+      - name: Dispatch release workflow
+        if: steps.derive.outputs.is_issue_number == 'true'
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ steps.derive.outputs.issue_number }}
+        run: |
+          $headers = @{
+            Authorization = "Bearer $env:GH_TOKEN"
+            Accept        = "application/vnd.github+json"
+            "X-GitHub-Api-Version" = "2022-11-28"
+          }
+          $body = @{
+            ref    = "integration"
+            inputs = @{ issue_number = "$env:ISSUE_NUMBER" }
+          } | ConvertTo-Json
+
+          Invoke-RestMethod -Method Post -Headers $headers `
+            -Uri "https://api.github.com/repos/${{ github.repository }}/actions/workflows/release.yml/dispatches" `
+            -Body $body -ContentType "application/json"
 
       - name: Comment on the issue
         if: steps.derive.outputs.is_issue_number == 'true'
@@ -555,4 +625,4 @@ jobs:
           ISSUE_NUMBER: ${{ steps.derive.outputs.issue_number }}
         shell: powershell
         run: |
-          gh issue comment $env:ISSUE_NUMBER --body "OpenSpecアーカイブが完了しました。feature/$env:ISSUE_NUMBER から release/v<version> を分岐してリリースフローへ進められます(docs/仕様/ブランチ・リリース戦略.md)。"
+          gh issue comment $env:ISSUE_NUMBER --body "OpenSpecアーカイブが完了し、integration のリリース(release.yml)を自動起動しました。main へのマージ・タグpushまで完了すると、この Issue にリリースバージョンをコメントします(docs/仕様/ブランチ・リリース戦略.md)。"
