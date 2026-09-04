@@ -4,11 +4,15 @@ speech panel stt only
 
 ---
 
-speech panel stt only
+issue-35-overlay-vertical-resize-follow
 
-この実装をお願いしたい
-まずはブランチを切って、今のopenspecの差分を全てコミットしてから
-作業に取り掛かってほしいです
+openspedの内容をまずは確認してください
+問題があれば、openspecの修正から着手してください
+問題ない場合は、実装を進めてほしいです
+完了したら、コミットとプッシュまでお願いします
+CIが全て通っていれば、アーカイブにお願いします
+
+
 
 
 ---
