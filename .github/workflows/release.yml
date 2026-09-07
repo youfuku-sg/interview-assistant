@@ -1,0 +1,387 @@
+name: Release
+
+# Automates docs/仕様/ブランチ・リリース戦略.md §7 (初期案): release/v<version> の
+# 分岐からタグ push までを、integrationへのdev PRマージ後に自動実行する。
+#
+# integration はdev PR(feature/* → integration)のマージ先を兼ねるOpenSpecアーカイブ
+# 専用の固定ブランチで、削除せず使い回す(developはfeature/*の分岐元として別に存在し、
+# このワークフローが最後にreleaseブランチをmergeして最新化する。§3.1参照)。
+#
+# workflow_dispatch のみをトリガーとする(sample/workflows/release.yml が使っていた
+# `pull_request: types: [closed]` は採用しない)。理由: integrationへのdev PRマージ
+# 直後、issue-driven-dev.yml の archive-on-merge ジョブが integration 上に
+# OpenSpecアーカイブのコミットを追加 push する。release はこのアーカイブ済みの
+# integration を main へ merge して初めて完全になるため、PRマージイベントに直接
+# 反応すると archive-on-merge の push より先に走ってしまう競合が起きる。
+# 代わりに archive-on-merge 側がこのワークフローを明示的に workflow_dispatch する
+# ことで、アーカイブ完了後の実行を保証する(build.yml をdispatchする既存パターンと同じ)。
+# issue_number は完了コメントの投稿先を示すためだけの任意入力で、マージ対象には
+# 使わない(マージ対象は常に integration 固定)。
+#
+# Claude Code CLI はセルフホストランナー上にログイン済みのCLIをそのまま使う。
+# ANTHROPIC_API_KEY / OAuthトークンをActions Secretsに登録する必要はない
+# (issue-driven-dev.yml と同じ前提)。
+
+on:
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: "完了コメントを投稿する対象のIssue番号(任意)。integrationへのdev PRマージから自動dispatchされる場合はissue-driven-dev.ymlが渡す"
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  issues: write
+  actions: write
+
+defaults:
+  run:
+    shell: pwsh
+
+jobs:
+  release:
+    runs-on: [self-hosted, Windows, X64]
+    steps:
+      - name: Checkout integration
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: integration
+          fetch-depth: 0
+
+      - name: Determine bump type via Claude Code
+        id: bump
+        run: |
+          git fetch --tags
+
+          $lastTag = git tag --list 'v*' --sort=-v:refname | Select-Object -First 1
+          if ($lastTag) { $range = "$lastTag..HEAD" } else { $range = "HEAD" }
+
+          $commitCount = [int](git rev-list --count $range)
+          if ($commitCount -eq 0) {
+            Write-Output "No new commits since $(if ($lastTag) { $lastTag } else { 'the beginning' }); nothing to release."
+            "release=false" >> $env:GITHUB_OUTPUT
+            exit 0
+          }
+
+          $logPath = "$env:RUNNER_TEMP\release_log.txt"
+          git log $range --stat | Out-File -FilePath $logPath -Encoding utf8
+
+          $prompt = @"
+          $logPath に、前回リリース以降の変更ログ(コミットメッセージとファイル差分の統計)が保存されています。
+          Readツールでこのファイルを読み込み、Semantic Versioning の観点で今回のリリースが
+          major, minor, patch のどれに相当するか判断してください。
+
+          判断基準:
+          - 既存の挙動・API・画面仕様を壊す可能性がある変更は major
+          - 後方互換性のある新機能追加は minor
+          - バグ修正・軽微な調整のみは patch
+
+          出力の一番最後に、他の文章を含めず次のうちどれか1行だけを出力してください:
+          BUMP: major
+          BUMP: minor
+          BUMP: patch
+          "@
+
+          $result = $prompt | claude -p --allowedTools "Read" --permission-mode acceptEdits
+          Write-Output $result
+
+          $bump = "patch"
+          if ($result -match "BUMP:\s*major") { $bump = "major" }
+          elseif ($result -match "BUMP:\s*minor") { $bump = "minor" }
+          elseif ($result -notmatch "BUMP:\s*patch") {
+            Write-Warning "Claudeの出力からBUMPを判定できなかったためpatchにフォールバックします"
+          }
+
+          Write-Output "Bump type: $bump"
+          "release=true" >> $env:GITHUB_OUTPUT
+          "bump=$bump" >> $env:GITHUB_OUTPUT
+          if ($lastTag) { "lasttag=$lastTag" >> $env:GITHUB_OUTPUT }
+
+      - name: Compute version number
+        id: version
+        if: steps.bump.outputs.release == 'true'
+        run: |
+          $lastTag = "${{ steps.bump.outputs.lasttag }}"
+          $base = if ($lastTag) { $lastTag -replace '^v', '' } else { "0.0.0" }
+          $parts = $base -split '\.'
+          $major = [int]$parts[0]; $minor = [int]$parts[1]; $patch = [int]$parts[2]
+
+          switch ("${{ steps.bump.outputs.bump }}") {
+            "major" { $major++; $minor = 0; $patch = 0 }
+            "minor" { $minor++; $patch = 0 }
+            default { $patch++ }
+          }
+
+          # `version`: タグ・ブランチ名用 (v接頭辞あり)。`plain_version`: package.json /
+          # Cargo.toml / tauri.conf.json / CHANGELOG.md の見出し用 (接頭辞なし)。
+          # ci.yml の publish-tauri は CHANGELOG.md の `## [<package.jsonのversion>]`
+          # を検索するため、plain_version はここが唯一の正としてファイル側と一致させる。
+          $plainVersion = "$major.$minor.$patch"
+          $newVersion = "v$plainVersion"
+          Write-Output "Previous tag: $(if ($lastTag) { $lastTag } else { 'none' })"
+          Write-Output "New version: $newVersion"
+          "version=$newVersion" >> $env:GITHUB_OUTPUT
+          "plain_version=$plainVersion" >> $env:GITHUB_OUTPUT
+
+      # release ブランチは main から派生させる(sourceブランチからは派生させない)。
+      # こうすることでCHANGELOG.mdなどmain側の履歴と共通の祖先を持たせ、
+      # 最後のmainへのマージ時にadd/addコンフリクトが起きないようにする。
+      - name: Create release branch from main
+        if: steps.bump.outputs.release == 'true'
+        id: branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git fetch origin main
+          $branch = "release/${{ steps.version.outputs.version }}"
+          git checkout -b $branch origin/main
+          "branch=$branch" >> $env:GITHUB_OUTPUT
+
+      - name: Merge integration into release branch
+        if: steps.bump.outputs.release == 'true'
+        run: |
+          git fetch origin integration
+          git merge --no-ff origin/integration -m "Merge integration into ${{ steps.branch.outputs.branch }}"
+
+          if ($LASTEXITCODE -ne 0) {
+            # mainは過去のリリースで .claude/.codex/openspec/openwiki/AGENTS.md/CLAUDE.md/docs
+            # を削除しているが、integration側では削除していないため、共通の祖先まで遡ると
+            # 「main側で削除・integration側で変更」のmodify/deleteコンフリクトになり得る。
+            # これらのパスは後段の Strip dev-only files で改めて削除するので、コンフリクト
+            # した場合は一旦削除して解決する。それ以外のパスがコンフリクトしていたら本物の
+            # 衝突なのでジョブを失敗させ、手動確認に回す。
+            # core.quotePath=falseを付けないと、日本語等の非ASCII文字を含むパスが
+            # 8進数エスケープでクォートされ(例: "docs/\343\202\254..."）、
+            # 後続の正規表現マッチ($devOnlyPattern)が外れてしまう。
+            $conflicts = git -c core.quotePath=false diff --name-only --diff-filter=U
+            $devOnlyPattern = '^(\.claude/|\.codex/|openspec/|openwiki/|AGENTS\.md$|CLAUDE\.md$|docs/)'
+            $unexpected = $conflicts | Where-Object { $_ -notmatch $devOnlyPattern }
+
+            if ($unexpected) {
+              Write-Error "想定外のマージコンフリクトが発生しました: $($unexpected -join ', ')"
+              exit 1
+            }
+
+            git rm -r --ignore-unmatch $conflicts
+            git commit -m "Merge integration into ${{ steps.branch.outputs.branch }} (dev-only files resolved by removal)"
+          }
+
+          git push origin "${{ steps.branch.outputs.branch }}"
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "release branch のpushに失敗しました"
+            exit 1
+          }
+
+      # package.json / src-tauri/Cargo.toml / src-tauri/Cargo.lock / src-tauri/tauri.conf.json
+      # の4箇所は、これまでリリースのたびに手動で同じバージョン番号に揃えていた
+      # (2026-09-04時点でいずれも0.6.4)。ここで release ブランチ上で一括更新する。
+      # cargoコマンドは使わない(このセルフホストランナーにRustツールチェインが
+      # 入っている前提を置けないため)。正規表現で該当箇所のみを直接書き換える。
+      - name: Sync version across package.json / Cargo.toml / Cargo.lock / tauri.conf.json
+        if: steps.bump.outputs.release == 'true'
+        run: |
+          $version = "${{ steps.version.outputs.plain_version }}"
+
+          (Get-Content package.json -Raw) `
+            -replace '"version":\s*"[^"]*"', "`"version`": `"$version`"" |
+            Set-Content package.json -NoNewline
+
+          (Get-Content src-tauri/tauri.conf.json -Raw) `
+            -replace '"version":\s*"[^"]*"', "`"version`": `"$version`"" |
+            Set-Content src-tauri/tauri.conf.json -NoNewline
+
+          # Cargo.toml: [package] セクションの version = "..." のみを対象にする
+          # (依存クレートの version 行を巻き込まないよう、最初の1件だけ置換する)。
+          $cargoTomlReplaced = $false
+          (Get-Content src-tauri/Cargo.toml) | ForEach-Object {
+            if (-not $cargoTomlReplaced -and $_ -match '^version\s*=\s*"[^"]*"') {
+              $cargoTomlReplaced = $true
+              "version = `"$version`""
+            } else {
+              $_
+            }
+          } | Set-Content src-tauri/Cargo.toml
+
+          # Cargo.lock: name = "interview-assistant" の直後の version 行のみを対象にする。
+          $cargoLockLines = Get-Content src-tauri/Cargo.lock
+          $cargoLockReplaced = $false
+          for ($i = 0; $i -lt $cargoLockLines.Length; $i++) {
+            if ($cargoLockLines[$i] -eq 'name = "interview-assistant"' -and -not $cargoLockReplaced) {
+              if ($i + 1 -lt $cargoLockLines.Length -and $cargoLockLines[$i + 1] -match '^version\s*=\s*"[^"]*"') {
+                $cargoLockLines[$i + 1] = "version = `"$version`""
+                $cargoLockReplaced = $true
+              }
+            }
+          }
+          Set-Content -Path src-tauri/Cargo.lock -Value $cargoLockLines
+
+          if (-not $cargoTomlReplaced) {
+            Write-Error "src-tauri/Cargo.toml の version 行が見つかりませんでした"
+            exit 1
+          }
+          if (-not $cargoLockReplaced) {
+            Write-Error "src-tauri/Cargo.lock の interview-assistant エントリが見つかりませんでした"
+            exit 1
+          }
+
+          git add package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml src-tauri/Cargo.lock
+          git commit -m "chore: bump version to $version"
+          git push origin "${{ steps.branch.outputs.branch }}"
+
+      - name: Update CHANGELOG via Claude Code
+        if: steps.bump.outputs.release == 'true'
+        run: |
+          # CHANGELOG.mdはmainから派生したrelease branchに既に存在する(なければ新規作成)。
+          # このバージョン更新・CHANGELOG更新は次のステップでdevelopにもmergeする。
+          $logPath = "$env:RUNNER_TEMP\release_log.txt"
+          $today = Get-Date -Format 'yyyy-MM-dd'
+          $plainVersion = "${{ steps.version.outputs.plain_version }}"
+
+          $prompt = @"
+          このディレクトリの CHANGELOG.md (無ければ新規作成) に、リリース $plainVersion の
+          エントリを先頭に追記してください。変更内容は $logPath (前回リリース以降のコミットログとファイル差分統計)
+          をReadツールで読み、ユーザー向けの箇条書きで簡潔にまとめてください。
+
+          フォーマット(ci.ymlのCHANGELOG抽出処理が `## [<バージョン>]` を検索するため、
+          見出しは角括弧付き・v接頭辞なしで書くこと):
+          ## [$plainVersion] - $today
+
+          - 変更点1
+          - 変更点2
+
+          既存のエントリは変更・削除せず、その上に新しいエントリを追加すること。
+          "@
+
+          $prompt | claude -p --allowedTools "Read,Write,Edit" --permission-mode acceptEdits
+
+          git add CHANGELOG.md
+          git commit -m "docs: update CHANGELOG for $plainVersion"
+          git push origin "${{ steps.branch.outputs.branch }}"
+
+      # developはfeature/*の分岐元であり続けるため、バージョン採番・CHANGELOG更新・
+      # (integration経由で取り込み済みの)OpenSpecアーカイブを反映しておく。この時点の
+      # release branchはまだdevファイルを保持している(strip前)ため、そのままmergeして
+      # develop側もAI開発ツール関連ファイル一式を維持できる。releaseブランチはmainから
+      # 分岐しているため、developの現在のHEADが祖先に含まれていれば通常fast-forward、
+      # 含まれていなければ通常のmergeになる。
+      - name: Merge release branch into develop
+        if: steps.bump.outputs.release == 'true'
+        run: |
+          git fetch origin develop
+          git checkout -B develop origin/develop
+          git merge --no-ff "${{ steps.branch.outputs.branch }}" `
+            -m "Merge ${{ steps.branch.outputs.branch }} into develop"
+
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "release branch を develop にマージできませんでした(コンフリクト)。手動で確認してください。"
+            git status
+            exit 1
+          }
+
+          git push origin develop
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "develop へのpushに失敗しました"
+            exit 1
+          }
+
+          # 後続ステップはrelease branchの状態を前提にしているため戻す。
+          git checkout "${{ steps.branch.outputs.branch }}"
+
+      # main は本番稼働に必要な最小構成にするため、AI開発ツール関連のファイルを
+      # リリースブランチ上で取り除いてからmainへマージする(developへのmergeは
+      # 上のステップで既に完了している)。.github/workflows/ はGitHub Actions自体の
+      # トリガーに必要なため対象外。CHANGELOG.mdは本番にも残す通常の成果物のため対象外。
+      - name: Strip dev-only files for release
+        if: steps.bump.outputs.release == 'true'
+        run: |
+          git rm -r --ignore-unmatch .claude .codex openspec openwiki AGENTS.md CLAUDE.md docs
+          git commit -m "release: strip dev-only files (AI tooling, docs) for production"
+          git push origin "${{ steps.branch.outputs.branch }}"
+
+      - name: Merge release branch into main
+        if: steps.bump.outputs.release == 'true'
+        run: |
+          git fetch origin main
+          git checkout -B main origin/main
+          git merge --no-ff "${{ steps.branch.outputs.branch }}" `
+            -m "Release ${{ steps.version.outputs.version }} (from integration)"
+
+          if ($LASTEXITCODE -ne 0) {
+            # release branchはmainから派生させているため、通常ここでコンフリクトすることはない。
+            # 発生した場合は想定外の状態なので、タグ付けやRelease作成に進まずジョブを失敗させる。
+            Write-Error "release branch を main にマージできませんでした(コンフリクト)。手動で確認してください。"
+            git status
+            exit 1
+          }
+
+          git push origin main
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "main へのpushに失敗しました"
+            exit 1
+          }
+
+      # 通常このタグ push で ci.yml の `verify-tag-on-main` / `publish-tauri` が
+      # 自動起動する(docs/仕様/GitHub Actions リリース手順.md §4)想定だが、それは
+      # 人間が自分のcredentialでpushした場合の話。既定のGITHUB_TOKENによるpush
+      # (このジョブがここまで行ってきたpushすべて)は他のworkflow runを起動しない
+      # (無限トリガーループ防止のためのGitHub Actionsの仕様。build-confirmジョブが
+      # build.ymlをdispatchしているのと同じ制約)。そのため、タグ自体はここで作成・
+      # pushしつつ、実際のビルド起動は次のステップで ci.yml を明示的にdispatchする。
+      - name: Tag release
+        if: steps.bump.outputs.release == 'true'
+        run: |
+          git tag -a "${{ steps.version.outputs.version }}" `
+            -m "Release ${{ steps.version.outputs.version }}"
+          git push origin "${{ steps.version.outputs.version }}"
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "タグ ${{ steps.version.outputs.version }} のpushに失敗しました"
+            exit 1
+          }
+
+      # ci.yml の `on: push` はこのジョブ自身のpush(既定のGITHUB_TOKEN)では起動
+      # しないため、main上でのビルド・draft GitHub Release作成を明示的に起動する。
+      # ci.yml の verify-tag-on-main は workflow_dispatch の場合 on_main 判定を
+      # スキップして常に true を返すため、`ref: main` を指定すれば通常のタグpush
+      # 起動時と同じ経路(frontend/rust CI → publish-tauri)で成果物が作られる。
+      # このワークフロー自身はGitHub Releaseを直接作成しない -- 二重作成を避けるため。
+      - name: Dispatch build & publish (ci.yml)
+        if: steps.bump.outputs.release == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $headers = @{
+            Authorization = "Bearer $env:GH_TOKEN"
+            Accept        = "application/vnd.github+json"
+            "X-GitHub-Api-Version" = "2022-11-28"
+          }
+          $body = @{ ref = "main" } | ConvertTo-Json
+
+          Invoke-RestMethod -Method Post -Headers $headers `
+            -Uri "https://api.github.com/repos/${{ github.repository }}/actions/workflows/ci.yml/dispatches" `
+            -Body $body -ContentType "application/json"
+
+      # release/vX.Y.Z はmainへマージ・タグ付けした時点で役目を終えるため削除する。
+      # integration/develop は削除しない(どちらも使い回す固定ブランチ)。
+      - name: Delete release branch
+        if: steps.bump.outputs.release == 'true'
+        run: |
+          git push origin --delete "${{ steps.branch.outputs.branch }}"
+
+      # issue_number が数値で渡された場合のみ、対応するIssueに結果を通知する。
+      # 手動dispatchでissue_numberを指定しなかった場合はスキップする。
+      - name: Comment on the originating issue
+        if: always() && steps.bump.outputs.release == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $issueNumber = "${{ inputs.issue_number }}"
+          if ($issueNumber -notmatch '^\d+$') {
+            Write-Output "issue_number が指定されていない(または数値でない)ためコメントをスキップします。"
+            exit 0
+          }
+
+          $version = "${{ steps.version.outputs.version }}"
+          $body = "リリース $version を作成しました(main へマージ・タグ push 済み)。CI(ci.yml)のビルドを起動したので、まもなく Windows インストーラが draft の GitHub Release に添付されます。GitHub の Releases ページで確認してください。"
+          gh issue comment $issueNumber --repo "${{ github.repository }}" --body $body
