@@ -1,7 +1,7 @@
 {
   "name": "interview-assistant",
   "private": false,
-  "version": "0.6.5",
+  "version": "0.6.6",
   "description": "A local-first desktop app for interview preparation and answer assistance.",
   "license": "GPL-3.0",
   "homepage": "https://github.com/youfuku-sg/interview-assistant#readme",
@@ -48,7 +48,7 @@
     "@radix-ui/react-slot": "^1.2.3",
     "@radix-ui/react-switch": "^1.2.6",
     "@radix-ui/react-tabs": "^1.1.13",
-    "@ricky0123/vad-react": "^0.0.30",
+    "@ricky0123/vad-react": "^0.0.36",
     "@tailwindcss/vite": "^4.1.12",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-autostart": "^2.5.0",
