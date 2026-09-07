@@ -79,6 +79,29 @@ AI の応答方針を定義するシステムプロンプトを作成・編集�
 - `{{TEXT}}` `{{IMAGE}}` `{{SYSTEM_PROMPT}}` `{{MODEL}}` `{{API_KEY}}`(AI用)、`{{AUDIO}}` `{{API_KEY}}` `{{LANGUAGE}}`(STT用)などの変数をリクエストに埋め込めます。
 - ストリーミング/非ストリーミングの切り替えにも対応しています。
 
+#### 例: LM Studio をローカル AI プロバイダとして使う
+
+1. [LM Studio](https://lmstudio.ai/) をインストールし、使用したいモデルをダウンロードして読み込む。
+2. LM Studio の「Developer」タブでローカルサーバーを起動する(デフォルトで `http://localhost:1234` で待ち受け、OpenAI 互換の `/v1/chat/completions` を公開します)。
+3. Dev Space →「AIプロバイダー」→「カスタムAIプロバイダーを追加」で以下を登録する。
+
+   - **curl**:
+     ```
+     curl --location 'http://127.0.0.1:1234/v1/chat/completions' \
+       --header 'Content-Type: application/json' \
+       --data '{
+         "model": "読み込んだモデル名(LM StudioのDeveloperタブで確認)",
+         "messages": [
+           { "role": "system", "content": "{{SYSTEM_PROMPT}}" },
+           { "role": "user", "content": "{{TEXT}}" }
+         ]
+       }'
+     ```
+   - **responseContentPath**: `choices[0].message.content`
+
+4. 保存後、「AIプロバイダーを選択」で作成したカスタムプロバイダーを明示的に選択する(保存しただけでは有効化されず、選択し忘れると組み込みプロバイダーが使われ続けます)。
+5. ローカルサーバーへの接続のため API キーは不要です(`{{API_KEY}}` は使いません)。
+
 ### データの保存先
 
 会話履歴・添付ファイルの情報は端末内の SQLite データベースに保存されます。AI/STT プロバイダ設定、システムプロンプト、キーボードショートカットなどの設定値は端末内のストレージに保存され、いずれも外部には送信されません。API キーなどの秘密情報は OS のセキュアストレージ(可能な場合)を利用します。AI への問い合わせは、選択したプロバイダへ直接送信されます。

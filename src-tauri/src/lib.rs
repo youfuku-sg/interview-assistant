@@ -50,6 +50,8 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_keychain::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_shell::init()) // Add shell plugin
         .plugin(posthog_init(PostHogConfig {
             api_key: posthog_api_key,

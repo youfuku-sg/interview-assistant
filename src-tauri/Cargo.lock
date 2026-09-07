@@ -1527,14 +1527,12 @@ dependencies = [
 
 [[package]]
 name = "filetime"
-version = "0.2.25"
+version = "0.2.29"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "35c0522e981e68cbfa8c3f978441a5f34b30b96e146b33cd3359176b50fe8586"
+checksum = "5c287a33c7f0a620c38e641e7f60827713987b3c0f26e8ddc9462cc69cf75759"
 dependencies = [
  "cfg-if",
  "libc",
- "libredox",
- "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -2633,6 +2631,47 @@ dependencies = [
 ]
 
 [[package]]
+name = "interview-assistant"
+version = "0.6.4"
+dependencies = [
+ "anyhow",
+ "base64 0.22.1",
+ "cidre",
+ "cpal",
+ "dotenv",
+ "futures-util",
+ "hound",
+ "image",
+ "libpulse-binding",
+ "libpulse-simple-binding",
+ "once_cell",
+ "reqwest 0.12.23",
+ "ringbuf",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tauri-nspanel",
+ "tauri-plugin-autostart",
+ "tauri-plugin-global-shortcut",
+ "tauri-plugin-http",
+ "tauri-plugin-keychain",
+ "tauri-plugin-machine-uid",
+ "tauri-plugin-macos-permissions",
+ "tauri-plugin-opener",
+ "tauri-plugin-posthog",
+ "tauri-plugin-process",
+ "tauri-plugin-shell",
+ "tauri-plugin-sql",
+ "tauri-plugin-updater",
+ "tokio",
+ "tracing",
+ "uuid",
+ "wasapi",
+ "xcap",
+]
+
+[[package]]
 name = "io-uring"
 version = "0.7.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3159,9 +3198,9 @@ checksum = "68354c5c6bd36d73ff3feceb05efa59b6acb7626617f4962be322a825e61f79a"
 
 [[package]]
 name = "minisign-verify"
-version = "0.2.4"
+version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e856fdd13623a2f5f2f54676a4ee49502a96a80ef4a62bcedd23d52427c44d43"
+checksum = "22f9645cb765ea72b8111f36c522475d2daa0d22c957a9826437e97534bc4e9e"
 
 [[package]]
 name = "miniz_oxide"
@@ -4120,46 +4159,6 @@ dependencies = [
  "quick-xml 0.38.1",
  "serde",
  "time",
-]
-
-[[package]]
-name = "interview-assistant"
-version = "0.6.4"
-dependencies = [
- "anyhow",
- "base64 0.22.1",
- "cidre",
- "cpal",
- "dotenv",
- "futures-util",
- "hound",
- "image",
- "libpulse-binding",
- "libpulse-simple-binding",
- "once_cell",
- "reqwest 0.12.23",
- "ringbuf",
- "serde",
- "serde_json",
- "tauri",
- "tauri-build",
- "tauri-nspanel",
- "tauri-plugin-autostart",
- "tauri-plugin-global-shortcut",
- "tauri-plugin-http",
- "tauri-plugin-keychain",
- "tauri-plugin-machine-uid",
- "tauri-plugin-macos-permissions",
- "tauri-plugin-opener",
- "tauri-plugin-posthog",
- "tauri-plugin-shell",
- "tauri-plugin-sql",
- "tauri-plugin-updater",
- "tokio",
- "tracing",
- "uuid",
- "wasapi",
- "xcap",
 ]
 
 [[package]]
@@ -5967,9 +5966,9 @@ dependencies = [
 
 [[package]]
 name = "tar"
-version = "0.4.44"
+version = "0.4.46"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1d863878d212c87a19c1a610eb53bb01fe12951c0501cf5a0d65f724914a667a"
+checksum = "3f6221d9a6003c78398e3b239969f352578258df48c8eb051caadae0015bc840"
 dependencies = [
  "filetime",
  "libc",
@@ -6286,6 +6285,16 @@ dependencies = [
  "tauri-plugin",
  "thiserror 2.0.14",
  "tokio",
+]
+
+[[package]]
+name = "tauri-plugin-process"
+version = "2.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d55511a7bf6cd70c8767b02c97bf8134fa434daf3926cfc1be0a0f94132d165a"
+dependencies = [
+ "tauri",
+ "tauri-plugin",
 ]
 
 [[package]]
@@ -8048,9 +8057,9 @@ checksum = "ec107c4503ea0b4a98ef47356329af139c0a4f7750e621cf2973cd3385ebcb3d"
 
 [[package]]
 name = "xattr"
-version = "1.5.1"
+version = "1.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "af3a19837351dc82ba89f8a125e22a3c475f05aba604acc023d62b2739ae2909"
+checksum = "32e45ad4206f6d2479085147f02bc2ef834ac85886624a23575ae137c8aa8156"
 dependencies = [
  "libc",
  "rustix 1.0.8",
@@ -8257,9 +8266,9 @@ dependencies = [
 
 [[package]]
 name = "zip"
-version = "4.3.0"
+version = "4.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9aed4ac33e8eb078c89e6cbb1d5c4c7703ec6d299fc3e7c3695af8f8b423468b"
+checksum = "caa8cd6af31c3b31c6631b8f483848b91589021b28fffe50adada48d4f4d2ed1"
 dependencies = [
  "arbitrary",
  "crc32fast",
