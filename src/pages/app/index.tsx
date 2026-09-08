@@ -16,6 +16,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { ErrorBoundary } from "react-error-boundary";
 import { ErrorLayout } from "@/layouts";
 import { getPlatform } from "@/lib";
+import { UpdateChecker } from "@/components/UpdateChecker";
 
 const App = () => {
   const { isHidden, systemAudio } = useApp();
@@ -52,6 +53,7 @@ const App = () => {
         console.log("Reset");
       }}
     >
+      <UpdateChecker />
       <div
         className={`w-screen h-screen flex overflow-hidden justify-center ${
           isHidden ? "hidden pointer-events-none" : ""
