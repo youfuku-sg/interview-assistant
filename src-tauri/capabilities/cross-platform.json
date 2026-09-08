@@ -11,6 +11,8 @@
     "keychain:allow-get-item",
     "keychain:allow-save-item",
     "keychain:allow-remove-item",
+    "updater:default",
+    "process:allow-restart",
     "global-shortcut:allow-is-registered",
     "global-shortcut:allow-register",
     "global-shortcut:allow-unregister",
